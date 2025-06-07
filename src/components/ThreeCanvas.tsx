@@ -13,7 +13,7 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
   const sceneRef = useRef<THREE.Scene>();
   const rendererRef = useRef<THREE.WebGLRenderer>();
   const cameraRef = useRef<THREE.OrthographicCamera>();
-  const meshesRef = useRef<Map<string, THREE.Mesh>>(new Map());
+  const meshesRef = useRef<Map<string, THREE.Object3D>>(new Map());
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -176,9 +176,15 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       if (!geometryStore.shapes.find(shape => shape.id === id)) {
         scene.remove(mesh);
         meshes.delete(id);
-        mesh.geometry.dispose();
-        if (mesh.material instanceof THREE.Material) {
-          mesh.material.dispose();
+        
+        // 清理资源
+        if (mesh instanceof THREE.LineSegments) {
+          if (mesh.geometry instanceof THREE.BufferGeometry) {
+            mesh.geometry.dispose();
+          }
+          if (mesh.material instanceof THREE.Material) {
+            mesh.material.dispose();
+          }
         }
       }
     });
@@ -188,25 +194,26 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       let mesh = meshes.get(shape.id);
 
       if (!mesh) {
-        // 创建新物体
+        // 创建新物体 - 使用线框轮廓显示
         const geometry = createGeometry(shape.type);
-        const material = new THREE.MeshLambertMaterial({ color: shape.color });
-        mesh = new THREE.Mesh(geometry, material);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
+        const edges = new THREE.EdgesGeometry(geometry);
+        const material = new THREE.LineBasicMaterial({ color: shape.color });
+        mesh = new THREE.LineSegments(edges, material);
         scene.add(mesh);
         meshes.set(shape.id, mesh);
       }
 
       // 更新物体属性
-      mesh.position.set(shape.position.x, shape.position.y, shape.position.z);
-      mesh.rotation.set(shape.rotation.x, shape.rotation.y, shape.rotation.z);
-      mesh.scale.set(shape.scale.x, shape.scale.y, shape.scale.z);
-      mesh.visible = shape.visible;
-      
-      // 更新材质颜色
-      if (mesh.material instanceof THREE.MeshLambertMaterial) {
-        mesh.material.color.setHex(parseInt(shape.color.replace('#', '0x')));
+      if (mesh) {
+        mesh.position.set(shape.position.x, shape.position.y, shape.position.z);
+        mesh.rotation.set(shape.rotation.x, shape.rotation.y, shape.rotation.z);
+        mesh.scale.set(shape.scale.x, shape.scale.y, shape.scale.z);
+        mesh.visible = shape.visible;
+        
+        // 更新材质颜色
+        if (mesh instanceof THREE.LineSegments && mesh.material instanceof THREE.LineBasicMaterial) {
+          mesh.material.color.setHex(parseInt(shape.color.replace('#', '0x')));
+        }
       }
     });
   };
