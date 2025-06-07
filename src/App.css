@@ -1,0 +1,68 @@
+.app {
+  margin: 0;
+  padding: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #faf9f8;
+}
+
+.sidebar {
+  width: 350px;
+  background-color: white;
+  border-right: 1px solid #e1dfdd;
+  display: flex;
+  flex-direction: column;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Fluent UI 组件样式覆盖 */
+.ms-Panel-main {
+  background-color: white;
+}
+
+.ms-CommandBar {
+  background-color: #faf9f8 !important;
+}
+
+.ms-DetailsList-contentWrapper {
+  background-color: white;
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+  .sidebar {
+    width: 300px;
+  }
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    width: 250px;
+  }
+} 
