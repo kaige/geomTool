@@ -12,7 +12,7 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene>();
   const rendererRef = useRef<THREE.WebGLRenderer>();
-  const cameraRef = useRef<THREE.PerspectiveCamera>();
+  const cameraRef = useRef<THREE.OrthographicCamera>();
   const meshesRef = useRef<Map<string, THREE.Mesh>>(new Map());
 
   useEffect(() => {
@@ -23,9 +23,18 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     scene.background = new THREE.Color(0xffffff); // 白色背景
     sceneRef.current = scene;
 
-    // 创建相机
-    const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
-    camera.position.set(5, 5, 5);
+    // 创建正交相机 - 初始画布大小为视口的两倍
+    const aspect = width / height;
+    let frustumSize = 20; // 初始设置为两倍大小
+    const camera = new THREE.OrthographicCamera(
+      -frustumSize * aspect / 2, 
+      frustumSize * aspect / 2, 
+      frustumSize / 2, 
+      -frustumSize / 2, 
+      0.1, 
+      1000
+    );
+    camera.position.set(0, 15, 0); // 从上方俯视XOY平面
     camera.lookAt(0, 0, 0);
     cameraRef.current = camera;
 
@@ -44,14 +53,6 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     directionalLight.position.set(10, 10, 5);
     directionalLight.castShadow = true;
     scene.add(directionalLight);
-
-    // 添加网格辅助线
-    const gridHelper = new THREE.GridHelper(10, 10);
-    scene.add(gridHelper);
-
-    // 添加坐标轴辅助线
-    const axesHelper = new THREE.AxesHelper(5);
-    scene.add(axesHelper);
 
     // 挂载到DOM
     mountRef.current.appendChild(renderer.domElement);
@@ -83,18 +84,20 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       const deltaX = event.clientX - mouseX;
       const deltaY = event.clientY - mouseY;
 
-      // 简化的轨道控制
-      const spherical = new THREE.Spherical();
-      spherical.setFromVector3(camera.position);
+      // 正交相机的平移控制 - 根据视锥体大小计算正确的移动距离
+      const aspect = width / height;
+      const worldWidth = frustumSize * aspect;
+      const worldHeight = frustumSize;
       
-      spherical.theta -= deltaX * 0.01;
-      spherical.phi += deltaY * 0.01;
+      // 将像素移动距离转换为世界坐标移动距离
+      const deltaWorldX = (deltaX / width) * worldWidth;
+      const deltaWorldY = (deltaY / height) * worldHeight;
       
-      // 限制phi的范围
-      spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi));
+      camera.position.x -= deltaWorldX;
+      camera.position.z -= deltaWorldY; // 修改为减号，让上下移动方向与鼠标一致
       
-      camera.position.setFromSpherical(spherical);
-      camera.lookAt(0, 0, 0);
+      // 相机始终保持俯视角度，朝向正下方
+      // 不需要动态调整朝向，保持固定的俯视角度
 
       mouseX = event.clientX;
       mouseY = event.clientY;
@@ -104,15 +107,37 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       isMouseDown = false;
     };
 
+    // 添加滚轮缩放功能
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      
+      const zoomSpeed = 0.1;
+      const delta = event.deltaY > 0 ? 1 : -1;
+      frustumSize += delta * zoomSpeed * frustumSize;
+      
+      // 限制缩放范围
+      frustumSize = Math.max(1, Math.min(100, frustumSize));
+      
+      // 更新相机视锥体
+      const aspect = width / height;
+      camera.left = -frustumSize * aspect / 2;
+      camera.right = frustumSize * aspect / 2;
+      camera.top = frustumSize / 2;
+      camera.bottom = -frustumSize / 2;
+      camera.updateProjectionMatrix();
+    };
+
     const currentMount = mountRef.current;
     renderer.domElement.addEventListener('mousedown', handleMouseDown);
     renderer.domElement.addEventListener('mousemove', handleMouseMove);
     renderer.domElement.addEventListener('mouseup', handleMouseUp);
+    renderer.domElement.addEventListener('wheel', handleWheel, { passive: false });
 
     return () => {
       renderer.domElement.removeEventListener('mousedown', handleMouseDown);
       renderer.domElement.removeEventListener('mousemove', handleMouseMove);
       renderer.domElement.removeEventListener('mouseup', handleMouseUp);
+      renderer.domElement.removeEventListener('wheel', handleWheel);
       
       if (currentMount && renderer.domElement) {
         currentMount.removeChild(renderer.domElement);

@@ -21,8 +21,8 @@ export const ShapeList: React.FC = observer(() => {
       key: 'type',
       name: '类型',
       fieldName: 'type',
-      minWidth: 80,
-      maxWidth: 120,
+      minWidth: 60,
+      maxWidth: 80,
       onRender: (item) => {
         const typeNames = {
           sphere: '球体',
@@ -38,56 +38,28 @@ export const ShapeList: React.FC = observer(() => {
       key: 'id',
       name: 'ID',
       fieldName: 'id',
-      minWidth: 100,
-      maxWidth: 150,
-      onRender: (item) => <Text>{item.id.substring(0, 8)}...</Text>,
-    },
-    {
-      key: 'position',
-      name: '位置',
-      fieldName: 'position',
-      minWidth: 120,
-      maxWidth: 180,
-      onRender: (item) => (
-        <Text>
-          ({item.position.x.toFixed(1)}, {item.position.y.toFixed(1)}, {item.position.z.toFixed(1)})
-        </Text>
-      ),
-    },
-    {
-      key: 'color',
-      name: '颜色',
-      fieldName: 'color',
-      minWidth: 60,
-      maxWidth: 80,
-      onRender: (item) => (
-        <div
-          style={{
-            width: 20,
-            height: 20,
-            backgroundColor: item.color,
-            border: '1px solid #ccc',
-            borderRadius: 3,
-          }}
-        />
-      ),
+      minWidth: 40,
+      maxWidth: 60,
+      onRender: (item) => <Text>{item.id}</Text>,
     },
     {
       key: 'actions',
       name: '操作',
-      minWidth: 100,
-      maxWidth: 120,
+      minWidth: 80,
+      maxWidth: 100,
       onRender: (item) => (
-        <Stack horizontal tokens={{ childrenGap: 5 }}>
+        <Stack horizontal tokens={{ childrenGap: 3 }}>
           <IconButton
             iconProps={item.visible ? eyeIcon : eyeOffIcon}
             title={item.visible ? "隐藏" : "显示"}
             onClick={() => geometryStore.updateShape(item.id, { visible: !item.visible })}
+            styles={{ root: { width: 28, height: 28 } }}
           />
           <IconButton
             iconProps={deleteIcon}
             title="删除"
             onClick={() => geometryStore.removeShape(item.id)}
+            styles={{ root: { width: 28, height: 28 } }}
           />
         </Stack>
       ),
@@ -107,7 +79,7 @@ export const ShapeList: React.FC = observer(() => {
       <Stack
         styles={{
           root: {
-            padding: '10px 20px',
+            padding: '10px 10px',
             backgroundColor: '#faf9f8',
             borderBottom: '1px solid #e1dfdd',
           },
@@ -118,12 +90,12 @@ export const ShapeList: React.FC = observer(() => {
         </Text>
       </Stack>
       
-      <Stack styles={{ root: { flex: 1, overflow: 'auto' } }}>
+      <Stack styles={{ root: { flex: 1, overflow: 'hidden' } }}>
         {geometryStore.shapes.length === 0 ? (
           <Stack
             styles={{
               root: {
-                padding: 20,
+                padding: 10,
                 textAlign: 'center',
                 color: '#666',
               },
@@ -140,6 +112,7 @@ export const ShapeList: React.FC = observer(() => {
             onItemInvoked={onItemClick}
             styles={{
               root: {
+                overflow: 'visible',
                 '& .ms-DetailsRow': {
                   cursor: 'pointer',
                 },

@@ -26,13 +26,16 @@ export const Toolbar: React.FC = observer(() => {
 
   const ribbonButtonStyle = {
     root: {
-      height: 72,
-      minWidth: 84,
-      flexDirection: 'column' as const,
+      height: 66,
+      minWidth: 60,
       border: '1px solid transparent',
       borderRadius: '4px',
-      margin: '4px 2px',
-      padding: '8px 6px',
+      margin: '2px 1px',
+      padding: '8px 4px 2px 4px',
+      display: 'flex',
+      flexDirection: 'column' as const,
+      alignItems: 'center',
+      justifyContent: 'center',
       '&:hover': {
         border: '1px solid #c7e0f4',
         backgroundColor: '#f3f2f1',
@@ -40,17 +43,31 @@ export const Toolbar: React.FC = observer(() => {
       '&:active': {
         backgroundColor: '#edebe9',
       },
+      '& .ms-Button-flexContainer': {
+        flexDirection: 'column' as const,
+        alignItems: 'center',
+      },
     },
     label: {
-      fontSize: '11px',
+      fontSize: '12px',
       fontWeight: '400',
-      marginTop: '4px',
+      marginTop: '-1px',
+      marginBottom: '0px',
       textAlign: 'center' as const,
+      lineHeight: '12px',
+      whiteSpace: 'nowrap' as const,
+      marginLeft: '1px !important' as const,
+      width: '100%',
+      display: 'flex',
+      justifyContent: 'center',
     },
     icon: {
-      fontSize: '20px',
-      height: '32px',
-      width: '32px',
+      fontSize: '27px',
+      height: '36px',
+      width: '36px',
+      marginRight: '0 !important' as const,
+      marginTop: '2px',
+      marginBottom: '1px',
     },
   };
 
@@ -60,23 +77,24 @@ export const Toolbar: React.FC = observer(() => {
     <div style={{ 
       backgroundColor: '#faf9f8', 
       borderBottom: '2px solid #e1dfdd',
-      minHeight: '110px'
+      minHeight: '100px'
     }}>
       <Pivot
         styles={{
           root: {
             padding: '0 16px',
+            paddingLeft: '35%',
           },
           itemContainer: {
-            padding: '8px 0',
-            minHeight: '80px',
+            padding: '6px 0',
+            minHeight: '74px',
           },
         }}
       >
         {/* 创建 Tab */}
         <PivotItem headerText="创建" key="create">
           <div style={{ backgroundColor: '#ffffff', padding: '8px 0', borderTop: '1px solid #e1dfdd' }}>
-            <Stack horizontal styles={{ root: { alignItems: 'center', justifyContent: 'flex-start', padding: '0 16px' } }}>
+            <Stack horizontal styles={{ root: { alignItems: 'center', justifyContent: 'flex-start', padding: '0 16px', paddingLeft: '25%' } }}>
               <Stack horizontal tokens={{ childrenGap: 4 }}>
                 <CommandBarButton
                   iconProps={{ iconName: 'CircleRing' }}
@@ -116,7 +134,7 @@ export const Toolbar: React.FC = observer(() => {
         {/* 管理 Tab */}
         <PivotItem headerText="管理" key="manage">
           <div style={{ backgroundColor: '#ffffff', padding: '8px 0', borderTop: '1px solid #e1dfdd' }}>
-            <Stack horizontal styles={{ root: { alignItems: 'center', justifyContent: 'flex-start', padding: '0 16px' } }}>
+            <Stack horizontal styles={{ root: { alignItems: 'center', justifyContent: 'flex-start', padding: '0 16px', paddingLeft: '25%' } }}>
               <Stack horizontal tokens={{ childrenGap: 4 }}>
                 <CommandBarButton
                   iconProps={{ iconName: 'Delete' }}

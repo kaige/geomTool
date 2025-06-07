@@ -15,8 +15,9 @@ export class GeometryStore {
   shapes: GeometryShape[] = [];
   selectedShapeId: string | null = null;
   scene: THREE.Scene | null = null;
-  camera: THREE.PerspectiveCamera | null = null;
+  camera: THREE.OrthographicCamera | null = null;
   renderer: THREE.WebGLRenderer | null = null;
+  private nextId: number = 0; // 自增ID计数器
 
   constructor() {
     makeAutoObservable(this);
@@ -27,7 +28,7 @@ export class GeometryStore {
     // 随机生成一个位置，避免图形重叠
     const randomPos = () => (Math.random() - 0.5) * 4; // -2到2之间的随机数
     const newShape: GeometryShape = {
-      id: Date.now().toString(),
+      id: this.nextId.toString(),
       type,
       position: { x: randomPos(), y: 1, z: randomPos() }, // Y设为1，避免与地面重叠
       rotation: { x: 0, y: 0, z: 0 },
@@ -36,6 +37,7 @@ export class GeometryStore {
       visible: true,
     };
     this.shapes.push(newShape);
+    this.nextId++; // 自增ID
   }
 
   // 删除图形
@@ -67,7 +69,7 @@ export class GeometryStore {
   }
 
   // 设置Three.js对象引用
-  setThreeObjects(scene: THREE.Scene, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer): void {
+  setThreeObjects(scene: THREE.Scene, camera: THREE.OrthographicCamera, renderer: THREE.WebGLRenderer): void {
     this.scene = scene;
     this.camera = camera;
     this.renderer = renderer;
@@ -77,6 +79,7 @@ export class GeometryStore {
   clearShapes(): void {
     this.shapes = [];
     this.selectedShapeId = null;
+    this.nextId = 0; // 重置ID计数器
   }
 }
 

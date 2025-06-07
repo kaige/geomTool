@@ -43,8 +43,8 @@ const App: React.FC = observer(() => {
       if (sidebar && toolbar) {
         const sidebarWidth = sidebar.offsetWidth;
         const toolbarHeight = toolbar.offsetHeight;
-        const newWidth = window.innerWidth - sidebarWidth - 40;
-        const newHeight = window.innerHeight - toolbarHeight - 40;
+        const newWidth = window.innerWidth - sidebarWidth - 4;
+        const newHeight = window.innerHeight - toolbarHeight - 6;
         
         setCanvasSize({
           width: Math.max(400, newWidth),
@@ -75,14 +75,14 @@ const App: React.FC = observer(() => {
               styles={{
                 root: {
                   flex: 1,
-                  padding: 20,
+                  padding: '3px 3px 3px 1px',
                   backgroundColor: '#f5f5f5',
                   alignItems: 'center',
                   justifyContent: 'center',
                 },
               }}
             >
-              <Stack tokens={{ childrenGap: 10 }} horizontalAlign="center">
+              <Stack tokens={{ childrenGap: 5 }} horizontalAlign="center">
                 <div
                   style={{
                     border: '2px solid #ccc',
