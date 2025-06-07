@@ -103,8 +103,60 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       mouseY = event.clientY;
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (event: MouseEvent) => {
+      if (isMouseDown) {
+        // 只在没有拖拽时才处理点击选择
+        const deltaX = Math.abs(event.clientX - mouseX);
+        const deltaY = Math.abs(event.clientY - mouseY);
+        
+        if (deltaX < 5 && deltaY < 5) { // 容错范围，避免轻微抖动
+          handleClick(event);
+        }
+      }
       isMouseDown = false;
+    };
+
+    // 处理点击选择
+    const handleClick = (event: MouseEvent) => {
+      // 创建射线检测器
+      const raycaster = new THREE.Raycaster();
+      const mouse = new THREE.Vector2();
+
+      // 计算鼠标在标准化设备坐标中的位置 (-1 to +1)
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      // 从相机位置和鼠标位置更新射线
+      raycaster.setFromCamera(mouse, camera);
+
+      // 获取所有可交互的物体
+      const intersectableObjects: THREE.Object3D[] = [];
+      meshesRef.current.forEach((mesh) => {
+        intersectableObjects.push(mesh);
+      });
+
+      // 计算射线与物体的交点
+      const intersects = raycaster.intersectObjects(intersectableObjects, false);
+
+      if (intersects.length > 0) {
+        // 找到被点击的物体对应的图形ID
+        const clickedMesh = intersects[0].object;
+        let clickedShapeId: string | null = null;
+        
+        meshesRef.current.forEach((mesh, id) => {
+          if (mesh === clickedMesh) {
+            clickedShapeId = id;
+          }
+        });
+
+        if (clickedShapeId) {
+          geometryStore.selectShape(clickedShapeId);
+        }
+      } else {
+        // 点击空白区域，取消选择
+        geometryStore.selectShape(null);
+      }
     };
 
     // 添加滚轮缩放功能
@@ -210,9 +262,11 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
         mesh.scale.set(shape.scale.x, shape.scale.y, shape.scale.z);
         mesh.visible = shape.visible;
         
-        // 更新材质颜色
+        // 更新材质颜色 - 选中状态显示不同颜色
         if (mesh instanceof THREE.LineSegments && mesh.material instanceof THREE.LineBasicMaterial) {
-          mesh.material.color.setHex(parseInt(shape.color.replace('#', '0x')));
+          const isSelected = geometryStore.selectedShapeId === shape.id;
+          const color = isSelected ? '#ff6b35' : shape.color; // 选中时显示橙色
+          mesh.material.color.setHex(parseInt(color.replace('#', '0x')));
         }
       }
     });

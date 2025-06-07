@@ -16,6 +16,15 @@ const eyeIcon: IIconProps = { iconName: 'View' };
 const eyeOffIcon: IIconProps = { iconName: 'Hide' };
 
 export const ShapeList: React.FC = observer(() => {
+  // 处理列表项点击
+  const onItemClick = (item: any) => {
+    if (geometryStore.selectedShapeId === item.id) {
+      geometryStore.selectShape(null);
+    } else {
+      geometryStore.selectShape(item.id);
+    }
+  };
+
   const columns: IColumn[] = [
     {
       key: 'type',
@@ -66,13 +75,7 @@ export const ShapeList: React.FC = observer(() => {
     },
   ];
 
-  const onItemClick = (item: any) => {
-    if (geometryStore.selectedShapeId === item.id) {
-      geometryStore.selectShape(null);
-    } else {
-      geometryStore.selectShape(item.id);
-    }
-  };
+  // onItemClick 逻辑现在由 Selection 对象的 onSelectionChanged 处理
 
   return (
     <Stack styles={{ root: { height: '100%', overflow: 'hidden' } }}>
@@ -107,8 +110,8 @@ export const ShapeList: React.FC = observer(() => {
           <DetailsList
             items={geometryStore.shapes}
             columns={columns}
-            setKey="set"
-            selectionMode={SelectionMode.single}
+            setKey={`list-${geometryStore.selectedShapeId || 'none'}`}
+            selectionMode={SelectionMode.none}
             onItemInvoked={onItemClick}
             styles={{
               root: {
@@ -119,11 +122,35 @@ export const ShapeList: React.FC = observer(() => {
                 '& .ms-DetailsRow:hover': {
                   backgroundColor: '#f3f2f1',
                 },
-                '& .ms-DetailsRow.is-selected': {
-                  backgroundColor: '#deecf9',
-                },
               },
             }}
+                         onRenderRow={(props, defaultRender) => {
+               if (!props || !defaultRender) return null;
+               const isSelected = props.item.id === geometryStore.selectedShapeId;
+               
+               const customProps = {
+                 ...props,
+                 styles: {
+                   root: {
+                     backgroundColor: isSelected ? '#e3f2fd' : 'transparent',
+                     border: isSelected ? '1px solid #1976d2' : '1px solid transparent',
+                     borderRadius: '4px',
+                     margin: '1px 4px',
+                     padding: '0px',
+                     transition: 'all 0.2s ease',
+                     ':hover': {
+                       backgroundColor: isSelected ? '#e3f2fd' : '#f5f5f5',
+                     },
+                   },
+                   cell: {
+                     color: isSelected ? '#1565c0' : 'inherit',
+                     fontWeight: isSelected ? '600' : 'normal',
+                   },
+                 },
+               };
+               
+               return defaultRender(customProps);
+             }}
             getKey={(item) => item.id}
           />
         )}
