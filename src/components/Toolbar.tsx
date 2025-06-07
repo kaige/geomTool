@@ -4,7 +4,6 @@ import {
   Pivot,
   PivotItem,
   Stack,
-  Text,
   CommandBarButton,
 } from '@fluentui/react';
 import { geometryStore, GeometryShape } from '../stores/GeometryStore';
@@ -109,7 +108,7 @@ export const Toolbar: React.FC = observer(() => {
                   styles={ribbonButtonStyle}
                 />
                 <CommandBarButton
-                  iconProps={{ iconName: 'RingerSolid' }}
+                  iconProps={{ iconName: 'Table' }}
                   text="圆柱体"
                   onClick={() => addShape('cylinder')}
                   styles={ribbonButtonStyle}
@@ -121,7 +120,7 @@ export const Toolbar: React.FC = observer(() => {
                   styles={ribbonButtonStyle}
                 />
                 <CommandBarButton
-                  iconProps={{ iconName: 'RingerOff' }}
+                  iconProps={{ iconName: 'RadioBtnOn' }}
                   text="圆环体"
                   onClick={() => addShape('torus')}
                   styles={ribbonButtonStyle}

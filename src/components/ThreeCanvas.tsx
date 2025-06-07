@@ -130,30 +130,49 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       // 从相机位置和鼠标位置更新射线
       raycaster.setFromCamera(mouse, camera);
 
+      // 设置射线检测的阈值，对于线段检测很重要
+      raycaster.params.Line.threshold = 0.1; // 增加线段检测的容错范围
+
       // 获取所有可交互的物体
       const intersectableObjects: THREE.Object3D[] = [];
-      meshesRef.current.forEach((mesh) => {
-        intersectableObjects.push(mesh);
+      const idMap = new Map<THREE.Object3D, string>();
+      
+      meshesRef.current.forEach((meshGroup, id) => {
+        // 只对透明的实体mesh进行射线检测，不检测线框
+        if (meshGroup instanceof THREE.Group) {
+          const solidMesh = meshGroup.children.find(child => child instanceof THREE.Mesh);
+          if (solidMesh) {
+            intersectableObjects.push(solidMesh);
+            idMap.set(solidMesh, id);
+          }
+        }
       });
 
       // 计算射线与物体的交点
       const intersects = raycaster.intersectObjects(intersectableObjects, false);
 
-      if (intersects.length > 0) {
-        // 找到被点击的物体对应的图形ID
-        const clickedMesh = intersects[0].object;
-        let clickedShapeId: string | null = null;
-        
-        meshesRef.current.forEach((mesh, id) => {
-          if (mesh === clickedMesh) {
-            clickedShapeId = id;
-          }
+      console.log('射线检测结果:', intersects.length, '个交点');
+      intersects.forEach((intersect, index) => {
+        console.log(`交点 ${index}:`, {
+          distance: intersect.distance,
+          object: intersect.object,
+          point: intersect.point
         });
+      });
+
+      if (intersects.length > 0) {
+        // 选择距离最近的物体（第一个交点就是最近的）
+        const closestIntersect = intersects[0];
+        const clickedMesh = closestIntersect.object;
+        const clickedShapeId = idMap.get(clickedMesh);
+
+        console.log('选中的物体ID:', clickedShapeId);
 
         if (clickedShapeId) {
           geometryStore.selectShape(clickedShapeId);
         }
       } else {
+        console.log('没有检测到交点，取消选择');
         // 点击空白区域，取消选择
         geometryStore.selectShape(null);
       }
@@ -224,49 +243,69 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     const meshes = meshesRef.current;
 
     // 移除不存在的物体
-    meshes.forEach((mesh, id) => {
+    meshes.forEach((meshGroup, id) => {
       if (!geometryStore.shapes.find(shape => shape.id === id)) {
-        scene.remove(mesh);
-        meshes.delete(id);
-        
-        // 清理资源
-        if (mesh instanceof THREE.LineSegments) {
-          if (mesh.geometry instanceof THREE.BufferGeometry) {
-            mesh.geometry.dispose();
-          }
-          if (mesh.material instanceof THREE.Material) {
-            mesh.material.dispose();
-          }
+        // 移除显示用的线框和检测用的实体
+        if (meshGroup instanceof THREE.Group) {
+          scene.remove(meshGroup);
+          meshGroup.children.forEach(child => {
+            if (child instanceof THREE.LineSegments || child instanceof THREE.Mesh) {
+              if (child.geometry instanceof THREE.BufferGeometry) {
+                child.geometry.dispose();
+              }
+              if (child.material instanceof THREE.Material) {
+                child.material.dispose();
+              }
+            }
+          });
         }
+        meshes.delete(id);
       }
     });
 
     // 添加或更新物体
     geometryStore.shapes.forEach(shape => {
-      let mesh = meshes.get(shape.id);
+      let meshGroup = meshes.get(shape.id);
 
-      if (!mesh) {
-        // 创建新物体 - 使用线框轮廓显示
+      if (!meshGroup) {
+        // 创建一个组来包含显示和检测用的mesh
+        meshGroup = new THREE.Group();
+        
+        // 创建几何体
         const geometry = createGeometry(shape.type);
+        
+        // 1. 创建线框用于显示
         const edges = new THREE.EdgesGeometry(geometry);
-        const material = new THREE.LineBasicMaterial({ color: shape.color });
-        mesh = new THREE.LineSegments(edges, material);
-        scene.add(mesh);
-        meshes.set(shape.id, mesh);
+        const lineMaterial = new THREE.LineBasicMaterial({ color: shape.color });
+        const lineSegments = new THREE.LineSegments(edges, lineMaterial);
+        meshGroup.add(lineSegments);
+        
+        // 2. 创建透明实体用于射线检测
+        const solidMaterial = new THREE.MeshBasicMaterial({ 
+          transparent: true, 
+          opacity: 0, // 完全透明，不可见
+          side: THREE.DoubleSide 
+        });
+        const solidMesh = new THREE.Mesh(geometry.clone(), solidMaterial);
+        meshGroup.add(solidMesh);
+        
+        scene.add(meshGroup);
+        meshes.set(shape.id, meshGroup);
       }
 
       // 更新物体属性
-      if (mesh) {
-        mesh.position.set(shape.position.x, shape.position.y, shape.position.z);
-        mesh.rotation.set(shape.rotation.x, shape.rotation.y, shape.rotation.z);
-        mesh.scale.set(shape.scale.x, shape.scale.y, shape.scale.z);
-        mesh.visible = shape.visible;
+      if (meshGroup instanceof THREE.Group) {
+        meshGroup.position.set(shape.position.x, shape.position.y, shape.position.z);
+        meshGroup.rotation.set(shape.rotation.x, shape.rotation.y, shape.rotation.z);
+        meshGroup.scale.set(shape.scale.x, shape.scale.y, shape.scale.z);
+        meshGroup.visible = shape.visible;
         
-        // 更新材质颜色 - 选中状态显示不同颜色
-        if (mesh instanceof THREE.LineSegments && mesh.material instanceof THREE.LineBasicMaterial) {
+        // 更新线框材质颜色 - 选中状态显示不同颜色
+        const lineSegments = meshGroup.children.find(child => child instanceof THREE.LineSegments);
+        if (lineSegments instanceof THREE.LineSegments && lineSegments.material instanceof THREE.LineBasicMaterial) {
           const isSelected = geometryStore.selectedShapeId === shape.id;
           const color = isSelected ? '#ff6b35' : shape.color; // 选中时显示橙色
-          mesh.material.color.setHex(parseInt(color.replace('#', '0x')));
+          lineSegments.material.color.setHex(parseInt(color.replace('#', '0x')));
         }
       }
     });
