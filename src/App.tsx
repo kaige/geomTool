@@ -3,14 +3,12 @@ import { observer } from 'mobx-react';
 import {
   Stack,
   Text,
-  DefaultButton,
   initializeIcons,
   ThemeProvider,
   createTheme,
 } from '@fluentui/react';
 import { Toolbar } from './components/Toolbar';
 import { ThreeCanvas } from './components/ThreeCanvas';
-import { PropertyPanel } from './components/PropertyPanel';
 import { ShapeList } from './components/ShapeList';
 import { geometryStore } from './stores/GeometryStore';
 import './App.css';
@@ -34,18 +32,7 @@ const theme = createTheme({
 });
 
 const App: React.FC = observer(() => {
-  const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
-
-  const openPanel = () => {
-    if (geometryStore.selectedShapeId) {
-      setIsPanelOpen(true);
-    }
-  };
-
-  const closePanel = () => {
-    setIsPanelOpen(false);
-  };
 
   useEffect(() => {
     const handleResize = () => {
@@ -95,19 +82,12 @@ const App: React.FC = observer(() => {
               }}
             >
               <Stack tokens={{ childrenGap: 10 }} horizontalAlign="center">
-                <Stack horizontal tokens={{ childrenGap: 10 }}>
-                  <DefaultButton
-                    text="属性面板"
-                    onClick={openPanel}
-                    disabled={!geometryStore.selectedShapeId}
-                  />
-                  <Text>
-                    {geometryStore.selectedShapeId 
-                      ? `已选择: ${geometryStore.selectedShape?.type || '未知'}`
-                      : '未选择图形'
-                    }
-                  </Text>
-                </Stack>
+                <Text>
+                  {geometryStore.selectedShapeId 
+                    ? `已选择: ${geometryStore.selectedShape?.type || '未知'}`
+                    : '未选择图形'
+                  }
+                </Text>
                 
                 <div
                   style={{
@@ -123,8 +103,6 @@ const App: React.FC = observer(() => {
             </Stack>
           </Stack>
         </Stack>
-
-        <PropertyPanel isOpen={isPanelOpen} onDismiss={closePanel} />
       </div>
     </ThemeProvider>
   );
