@@ -10,6 +10,7 @@ import {
 import { Toolbar } from './components/Toolbar';
 import { ThreeCanvas } from './components/ThreeCanvas';
 import { ShapeList } from './components/ShapeList';
+import { StatusBar } from './components/StatusBar';
 import { geometryStore } from './stores/GeometryStore';
 import './App.css';
 
@@ -82,13 +83,6 @@ const App: React.FC = observer(() => {
               }}
             >
               <Stack tokens={{ childrenGap: 10 }} horizontalAlign="center">
-                <Text>
-                  {geometryStore.selectedShapeId 
-                    ? `已选择: ${geometryStore.selectedShape?.type || '未知'}`
-                    : '未选择图形'
-                  }
-                </Text>
-                
                 <div
                   style={{
                     border: '2px solid #ccc',
@@ -102,6 +96,8 @@ const App: React.FC = observer(() => {
               </Stack>
             </Stack>
           </Stack>
+
+          <StatusBar />
         </Stack>
       </div>
     </ThemeProvider>

@@ -54,13 +54,7 @@ export const Toolbar: React.FC = observer(() => {
     },
   };
 
-  const groupStyle = {
-    root: {
-      padding: '8px 12px',
-      borderRight: '1px solid #e1dfdd',
-      marginRight: '8px',
-    },
-  };
+
 
   return (
     <div style={{ 
@@ -81,22 +75,8 @@ export const Toolbar: React.FC = observer(() => {
       >
         {/* 创建 Tab */}
         <PivotItem headerText="创建" key="create">
-          <Stack horizontal styles={{ root: { alignItems: 'flex-start', padding: '4px 0' } }}>
-            {/* 基础图形组 */}
-            <Stack styles={groupStyle}>
-              <Text 
-                variant="small" 
-                styles={{ 
-                  root: { 
-                    color: '#666', 
-                    marginBottom: '8px', 
-                    fontSize: '11px',
-                    textAlign: 'center'
-                  } 
-                }}
-              >
-                基础图形
-              </Text>
+          <div style={{ backgroundColor: '#ffffff', padding: '8px 0', borderTop: '1px solid #e1dfdd' }}>
+            <Stack horizontal styles={{ root: { alignItems: 'center', justifyContent: 'flex-start', padding: '0 16px' } }}>
               <Stack horizontal tokens={{ childrenGap: 4 }}>
                 <CommandBarButton
                   iconProps={{ iconName: 'CircleRing' }}
@@ -116,25 +96,6 @@ export const Toolbar: React.FC = observer(() => {
                   onClick={() => addShape('cylinder')}
                   styles={ribbonButtonStyle}
                 />
-              </Stack>
-            </Stack>
-
-            {/* 高级图形组 */}
-            <Stack styles={groupStyle}>
-              <Text 
-                variant="small" 
-                styles={{ 
-                  root: { 
-                    color: '#666', 
-                    marginBottom: '8px', 
-                    fontSize: '11px',
-                    textAlign: 'center'
-                  } 
-                }}
-              >
-                高级图形
-              </Text>
-              <Stack horizontal tokens={{ childrenGap: 4 }}>
                 <CommandBarButton
                   iconProps={{ iconName: 'TriangleUp12' }}
                   text="圆锥体"
@@ -149,27 +110,13 @@ export const Toolbar: React.FC = observer(() => {
                 />
               </Stack>
             </Stack>
-          </Stack>
+          </div>
         </PivotItem>
 
         {/* 管理 Tab */}
         <PivotItem headerText="管理" key="manage">
-          <Stack horizontal styles={{ root: { alignItems: 'flex-start', padding: '4px 0' } }}>
-            {/* 编辑操作组 */}
-            <Stack styles={groupStyle}>
-              <Text 
-                variant="small" 
-                styles={{ 
-                  root: { 
-                    color: '#666', 
-                    marginBottom: '8px', 
-                    fontSize: '11px',
-                    textAlign: 'center'
-                  } 
-                }}
-              >
-                编辑操作
-              </Text>
+          <div style={{ backgroundColor: '#ffffff', padding: '8px 0', borderTop: '1px solid #e1dfdd' }}>
+            <Stack horizontal styles={{ root: { alignItems: 'center', justifyContent: 'flex-start', padding: '0 16px' } }}>
               <Stack horizontal tokens={{ childrenGap: 4 }}>
                 <CommandBarButton
                   iconProps={{ iconName: 'Delete' }}
@@ -187,31 +134,7 @@ export const Toolbar: React.FC = observer(() => {
                 />
               </Stack>
             </Stack>
-
-            {/* 信息显示组 */}
-            <Stack styles={{ root: { padding: '8px 12px', alignItems: 'center', justifyContent: 'center' } }}>
-              <Text 
-                variant="small" 
-                styles={{ 
-                  root: { 
-                    color: '#666', 
-                    marginBottom: '4px', 
-                    fontSize: '11px'
-                  } 
-                }}
-              >
-                统计信息
-              </Text>
-              <Stack styles={{ root: { alignItems: 'center' } }}>
-                <Text styles={{ root: { fontSize: '18px', fontWeight: 600, color: '#0078d4' } }}>
-                  {geometryStore.shapes.length}
-                </Text>
-                <Text styles={{ root: { fontSize: '10px', color: '#666' } }}>
-                  图形数量
-                </Text>
-              </Stack>
-            </Stack>
-          </Stack>
+          </div>
         </PivotItem>
       </Pivot>
     </div>
