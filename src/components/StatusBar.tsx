@@ -2,6 +2,7 @@ import React from 'react';
 import { observer } from 'mobx-react';
 import { Stack, Text } from '@fluentui/react';
 import { geometryStore } from '../stores/GeometryStore';
+import { languageStore } from '../stores/LanguageStore';
 
 export const StatusBar: React.FC = observer(() => {
   return (
@@ -19,7 +20,7 @@ export const StatusBar: React.FC = observer(() => {
         {/* 左侧：版本信息 */}
         <div>
           <Text styles={{ root: { fontSize: '12px', color: '#666' } }}>
-            GeomTool v1.0
+            {languageStore.t.appName} {languageStore.t.version}
           </Text>
         </div>
 
@@ -28,10 +29,13 @@ export const StatusBar: React.FC = observer(() => {
           {geometryStore.selectedShapeId && (
             <Stack horizontal tokens={{ childrenGap: 6 }}>
               <Text styles={{ root: { fontSize: '12px', color: '#666' } }}>
-                已选择:
+                {languageStore.t.selectedShape}:
               </Text>
               <Text styles={{ root: { fontSize: '12px', fontWeight: 600, color: '#0078d4' } }}>
-                {geometryStore.selectedShape?.type || '未知'}
+                {geometryStore.selectedShape ? 
+                  (languageStore.t as any)[geometryStore.selectedShape.type] || geometryStore.selectedShape.type : 
+                  languageStore.t.unknown
+                }
               </Text>
             </Stack>
           )}
@@ -41,7 +45,7 @@ export const StatusBar: React.FC = observer(() => {
         <div style={{ marginLeft: 'auto' }}>
           <Stack horizontal tokens={{ childrenGap: 6 }}>
             <Text styles={{ root: { fontSize: '12px', color: '#666' } }}>
-              图形数量:
+              {languageStore.t.totalShapes}:
             </Text>
             <Text styles={{ root: { fontSize: '12px', fontWeight: 600, color: '#0078d4' } }}>
               {geometryStore.shapes.length}

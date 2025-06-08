@@ -10,6 +10,7 @@ import {
   IIconProps,
 } from '@fluentui/react';
 import { geometryStore } from '../stores/GeometryStore';
+import { languageStore } from '../stores/LanguageStore';
 
 const deleteIcon: IIconProps = { iconName: 'Delete' };
 const eyeIcon: IIconProps = { iconName: 'View' };
@@ -28,17 +29,17 @@ export const ShapeList: React.FC = observer(() => {
   const columns: IColumn[] = [
     {
       key: 'type',
-      name: '类型',
+      name: languageStore.t.type,
       fieldName: 'type',
       minWidth: 60,
       maxWidth: 80,
       onRender: (item) => {
         const typeNames = {
-          sphere: '球体',
-          cube: '立方体',
-          cylinder: '圆柱体',
-          cone: '圆锥体',
-          torus: '圆环体',
+          sphere: languageStore.t.sphere,
+          cube: languageStore.t.cube,
+          cylinder: languageStore.t.cylinder,
+          cone: languageStore.t.cone,
+          torus: languageStore.t.torus,
         };
         return <Text>{typeNames[item.type as keyof typeof typeNames] || item.type}</Text>;
       },
@@ -53,20 +54,20 @@ export const ShapeList: React.FC = observer(() => {
     },
     {
       key: 'actions',
-      name: '操作',
+      name: languageStore.t.actions,
       minWidth: 80,
       maxWidth: 100,
       onRender: (item) => (
         <Stack horizontal tokens={{ childrenGap: 3 }}>
           <IconButton
             iconProps={item.visible ? eyeIcon : eyeOffIcon}
-            title={item.visible ? "隐藏" : "显示"}
+            title={item.visible ? languageStore.t.hide : languageStore.t.show}
             onClick={() => geometryStore.updateShape(item.id, { visible: !item.visible })}
             styles={{ root: { width: 28, height: 28 } }}
           />
           <IconButton
             iconProps={deleteIcon}
-            title="删除"
+            title={languageStore.t.delete}
             onClick={() => geometryStore.removeShape(item.id)}
             styles={{ root: { width: 28, height: 28 } }}
           />
@@ -89,7 +90,7 @@ export const ShapeList: React.FC = observer(() => {
         }}
       >
         <Text variant="mediumPlus" styles={{ root: { fontWeight: 600 } }}>
-          图形列表 ({geometryStore.shapes.length})
+          {languageStore.t.shapeList} ({geometryStore.shapes.length})
         </Text>
       </Stack>
       
@@ -104,7 +105,7 @@ export const ShapeList: React.FC = observer(() => {
               },
             }}
           >
-            <Text>暂无图形，请添加一些图形开始使用</Text>
+            <Text>{languageStore.t.noShapes}</Text>
           </Stack>
         ) : (
           <DetailsList

@@ -7,6 +7,8 @@ import {
   CommandBarButton,
 } from '@fluentui/react';
 import { geometryStore, GeometryShape } from '../stores/GeometryStore';
+import { languageStore } from '../stores/LanguageStore';
+import { LanguageSelector } from './LanguageSelector';
 
 export const Toolbar: React.FC = observer(() => {
   const addShape = (type: GeometryShape['type']) => {
@@ -76,8 +78,19 @@ export const Toolbar: React.FC = observer(() => {
     <div style={{ 
       backgroundColor: '#faf9f8', 
       borderBottom: '2px solid #e1dfdd',
-      minHeight: '100px'
+      minHeight: '100px',
+      position: 'relative'
     }}>
+      {/* 语言切换器 - 右上角 */}
+      <div style={{
+        position: 'absolute',
+        top: '8px',
+        right: '16px',
+        zIndex: 1000,
+      }}>
+        <LanguageSelector />
+      </div>
+      
       <Pivot
         styles={{
           root: {
@@ -91,37 +104,37 @@ export const Toolbar: React.FC = observer(() => {
         }}
       >
         {/* 创建 Tab */}
-        <PivotItem headerText="创建" key="create">
+        <PivotItem headerText={languageStore.t.create} key="create">
           <div style={{ backgroundColor: '#ffffff', padding: '8px 0', borderTop: '1px solid #e1dfdd' }}>
             <Stack horizontal styles={{ root: { alignItems: 'center', justifyContent: 'flex-start', padding: '0 16px', paddingLeft: '25%' } }}>
               <Stack horizontal tokens={{ childrenGap: 4 }}>
                 <CommandBarButton
                   iconProps={{ iconName: 'CircleRing' }}
-                  text="球体"
+                  text={languageStore.t.sphere}
                   onClick={() => addShape('sphere')}
                   styles={ribbonButtonStyle}
                 />
                 <CommandBarButton
                   iconProps={{ iconName: 'Stop' }}
-                  text="立方体"
+                  text={languageStore.t.cube}
                   onClick={() => addShape('cube')}
                   styles={ribbonButtonStyle}
                 />
                 <CommandBarButton
                   iconProps={{ iconName: 'Table' }}
-                  text="圆柱体"
+                  text={languageStore.t.cylinder}
                   onClick={() => addShape('cylinder')}
                   styles={ribbonButtonStyle}
                 />
                 <CommandBarButton
                   iconProps={{ iconName: 'TriangleUp12' }}
-                  text="圆锥体"
+                  text={languageStore.t.cone}
                   onClick={() => addShape('cone')}
                   styles={ribbonButtonStyle}
                 />
                 <CommandBarButton
                   iconProps={{ iconName: 'RadioBtnOn' }}
-                  text="圆环体"
+                  text={languageStore.t.torus}
                   onClick={() => addShape('torus')}
                   styles={ribbonButtonStyle}
                 />
@@ -131,20 +144,20 @@ export const Toolbar: React.FC = observer(() => {
         </PivotItem>
 
         {/* 管理 Tab */}
-        <PivotItem headerText="管理" key="manage">
+        <PivotItem headerText={languageStore.t.manage} key="manage">
           <div style={{ backgroundColor: '#ffffff', padding: '8px 0', borderTop: '1px solid #e1dfdd' }}>
             <Stack horizontal styles={{ root: { alignItems: 'center', justifyContent: 'flex-start', padding: '0 16px', paddingLeft: '25%' } }}>
               <Stack horizontal tokens={{ childrenGap: 4 }}>
                 <CommandBarButton
                   iconProps={{ iconName: 'Delete' }}
-                  text="删除选中"
+                  text={languageStore.t.deleteSelected}
                   onClick={deleteSelected}
                   disabled={!geometryStore.selectedShapeId}
                   styles={ribbonButtonStyle}
                 />
                 <CommandBarButton
                   iconProps={{ iconName: 'ClearFormatting' }}
-                  text="清空全部"
+                  text={languageStore.t.clearAll}
                   onClick={clearAll}
                   disabled={geometryStore.shapes.length === 0}
                   styles={ribbonButtonStyle}
