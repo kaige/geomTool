@@ -67,15 +67,101 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     };
     animate();
 
-    // 添加鼠标控制（简单的轨道控制）
+    // 添加鼠标控制
     let isMouseDown = false;
     let mouseX = 0;
     let mouseY = 0;
+    let isDraggingObject = false; // 标记是否在拖拽物体
+    let dragStartWorldPos: THREE.Vector3 | null = null; // 拖拽开始时的世界坐标
+    let dragStartObjectPos: { x: number; y: number; z: number } | null = null; // 拖拽开始时的物体位置
 
     const handleMouseDown = (event: MouseEvent) => {
       isMouseDown = true;
       mouseX = event.clientX;
       mouseY = event.clientY;
+              isDraggingObject = false;
+        dragStartWorldPos = null;
+        dragStartObjectPos = null;
+
+        // 检查是否点击在选中的物体上
+        if (geometryStore.selectedShapeId) {
+          const clickedShape = checkObjectAtMouse(event);
+          if (clickedShape && clickedShape === geometryStore.selectedShapeId) {
+            isDraggingObject = true;
+            renderer.domElement.style.cursor = 'grabbing'; // 拖拽时的样式
+            
+            // 记录拖拽开始时的世界坐标和物体位置
+            const worldPos = screenToWorld(event.clientX, event.clientY);
+            const selectedShape = geometryStore.selectedShape;
+            if (worldPos && selectedShape) {
+              dragStartWorldPos = worldPos.clone();
+              dragStartObjectPos = {
+                x: selectedShape.position.x,
+                y: selectedShape.position.y,
+                z: selectedShape.position.z
+              };
+            }
+          }
+        }
+    };
+
+    // 将屏幕坐标转换为世界坐标（在选中物体的Y高度平面上）
+    const screenToWorld = (screenX: number, screenY: number): THREE.Vector3 | null => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      const mouse = new THREE.Vector2();
+      mouse.x = ((screenX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((screenY - rect.top) / rect.height) * 2 + 1;
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, camera);
+
+      // 使用选中物体的Y坐标作为平面高度，如果没有选中物体则使用Y=1
+      let planeY = 1; // 默认高度
+      if (geometryStore.selectedShape) {
+        planeY = geometryStore.selectedShape.position.y;
+      }
+      
+      // 创建一个在指定Y高度的平面，用于计算交点
+      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -planeY);
+      const intersectPoint = new THREE.Vector3();
+      
+      if (raycaster.ray.intersectPlane(plane, intersectPoint)) {
+        return intersectPoint;
+      }
+      return null;
+    };
+
+    // 检查鼠标位置是否有物体
+    const checkObjectAtMouse = (event: MouseEvent): string | null => {
+      const raycaster = new THREE.Raycaster();
+      const mouse = new THREE.Vector2();
+
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+
+      const intersectableObjects: THREE.Object3D[] = [];
+      const idMap = new Map<THREE.Object3D, string>();
+      
+      meshesRef.current.forEach((meshGroup, id) => {
+        if (meshGroup instanceof THREE.Group) {
+          const solidMesh = meshGroup.children.find(child => child instanceof THREE.Mesh);
+          if (solidMesh) {
+            intersectableObjects.push(solidMesh);
+            idMap.set(solidMesh, id);
+          }
+        }
+      });
+
+      const intersects = raycaster.intersectObjects(intersectableObjects, false);
+      
+      if (intersects.length > 0) {
+        const clickedMesh = intersects[0].object;
+        return idMap.get(clickedMesh) || null;
+      }
+      return null;
     };
 
     const handleMouseMove = (event: MouseEvent) => {
@@ -84,20 +170,35 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       const deltaX = event.clientX - mouseX;
       const deltaY = event.clientY - mouseY;
 
-      // 正交相机的平移控制 - 根据视锥体大小计算正确的移动距离
-      const aspect = width / height;
-      const worldWidth = frustumSize * aspect;
-      const worldHeight = frustumSize;
-      
-      // 将像素移动距离转换为世界坐标移动距离
-      const deltaWorldX = (deltaX / width) * worldWidth;
-      const deltaWorldY = (deltaY / height) * worldHeight;
-      
-      camera.position.x -= deltaWorldX;
-      camera.position.z -= deltaWorldY; // 修改为减号，让上下移动方向与鼠标一致
-      
-      // 相机始终保持俯视角度，朝向正下方
-      // 不需要动态调整朝向，保持固定的俯视角度
+                      if (isDraggingObject && geometryStore.selectedShapeId && dragStartWorldPos && dragStartObjectPos) {
+          // 拖拽物体
+          const currentWorldPos = screenToWorld(event.clientX, event.clientY);
+          if (currentWorldPos) {
+            // 计算鼠标从开始位置到当前位置的总位移
+            const totalDeltaX = currentWorldPos.x - dragStartWorldPos.x;
+            const totalDeltaZ = currentWorldPos.z - dragStartWorldPos.z;
+            
+            // 将总位移应用到物体的起始位置上，不使用累积方式
+            geometryStore.updateShape(geometryStore.selectedShapeId, {
+              position: {
+                x: dragStartObjectPos.x + totalDeltaX,
+                y: dragStartObjectPos.y, // 保持Y不变
+                z: dragStartObjectPos.z + totalDeltaZ,
+              }
+            });
+          }
+        } else {
+          // 拖拽画布
+          const aspect = width / height;
+          const worldWidth = frustumSize * aspect;
+          const worldHeight = frustumSize;
+          
+          const deltaWorldX = (deltaX / width) * worldWidth;
+          const deltaWorldY = (deltaY / height) * worldHeight;
+          
+          camera.position.x -= deltaWorldX;
+          camera.position.z -= deltaWorldY;
+        }
 
       mouseX = event.clientX;
       mouseY = event.clientY;
@@ -105,15 +206,31 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
 
     const handleMouseUp = (event: MouseEvent) => {
       if (isMouseDown) {
-        // 只在没有拖拽时才处理点击选择
         const deltaX = Math.abs(event.clientX - mouseX);
         const deltaY = Math.abs(event.clientY - mouseY);
         
-        if (deltaX < 5 && deltaY < 5) { // 容错范围，避免轻微抖动
+        if (deltaX < 5 && deltaY < 5) {
+          // 这是一个点击操作，不是拖拽
           handleClick(event);
+        } else if (!isDraggingObject) {
+          // 这是拖拽画布操作，不处理选择逻辑
+          // 拖拽画布不应该影响物体选择状态
         }
+        // 如果是拖拽物体操作(isDraggingObject = true)，保持当前选中状态不变
       }
+      
       isMouseDown = false;
+      isDraggingObject = false;
+      dragStartWorldPos = null;
+      dragStartObjectPos = null;
+      
+      // 重置鼠标样式，但要考虑鼠标是否仍在选中物体上
+      const hoveredShape = checkObjectAtMouse(event);
+      if (hoveredShape && hoveredShape === geometryStore.selectedShapeId) {
+        renderer.domElement.style.cursor = 'grab';
+      } else {
+        renderer.domElement.style.cursor = 'default';
+      }
     };
 
     // 处理点击选择
@@ -169,11 +286,12 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
         console.log('选中的物体ID:', clickedShapeId);
 
         if (clickedShapeId) {
+          // 点击物体，选中该物体
           geometryStore.selectShape(clickedShapeId);
         }
       } else {
         console.log('没有检测到交点，取消选择');
-        // 点击空白区域，取消选择
+        // 只有点击空白区域时，才取消选择
         geometryStore.selectShape(null);
       }
     };
@@ -198,16 +316,32 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       camera.updateProjectionMatrix();
     };
 
+    // 处理鼠标悬停效果
+    const handleMouseHover = (event: MouseEvent) => {
+      if (isMouseDown) return; // 拖拽时不处理悬停
+      
+      const hoveredShape = checkObjectAtMouse(event);
+      
+      // 更新鼠标样式
+      if (hoveredShape && hoveredShape === geometryStore.selectedShapeId) {
+        renderer.domElement.style.cursor = 'grab';
+      } else {
+        renderer.domElement.style.cursor = 'default';
+      }
+    };
+
     const currentMount = mountRef.current;
     renderer.domElement.addEventListener('mousedown', handleMouseDown);
     renderer.domElement.addEventListener('mousemove', handleMouseMove);
     renderer.domElement.addEventListener('mouseup', handleMouseUp);
+    renderer.domElement.addEventListener('mouseover', handleMouseHover);
     renderer.domElement.addEventListener('wheel', handleWheel, { passive: false });
 
     return () => {
       renderer.domElement.removeEventListener('mousedown', handleMouseDown);
       renderer.domElement.removeEventListener('mousemove', handleMouseMove);
       renderer.domElement.removeEventListener('mouseup', handleMouseUp);
+      renderer.domElement.removeEventListener('mouseover', handleMouseHover);
       renderer.domElement.removeEventListener('wheel', handleWheel);
       
       if (currentMount && renderer.domElement) {
