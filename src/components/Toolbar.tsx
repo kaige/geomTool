@@ -28,16 +28,17 @@ export const Toolbar: React.FC = observer(() => {
 
   const ribbonButtonStyle = {
     root: {
-      height: 65,
-      minWidth: 58,
+      height: 60,
+      minWidth: 60,
       border: '1px solid transparent',
       borderRadius: '4px',
-      margin: '2px 1px',
-      padding: '6px 3px 3px 3px',
+      margin: '0px 1px',
+      padding: '0px 4px 0px 4px',
       display: 'flex',
       flexDirection: 'column' as const,
       alignItems: 'center',
       justifyContent: 'center',
+      color: '#0078d4',
       '&:hover': {
         border: '1px solid #c7e0f4',
         backgroundColor: '#f3f2f1',
@@ -51,35 +52,55 @@ export const Toolbar: React.FC = observer(() => {
       },
     },
     label: {
-      fontSize: '11px',
+      fontSize: '12px',
       fontWeight: '400',
-      marginTop: '3px',
+      marginTop: '4px',
       marginBottom: '0px',
       textAlign: 'center' as const,
-      lineHeight: '11px',
+      lineHeight: '12px',
       whiteSpace: 'nowrap' as const,
       marginLeft: '1px !important' as const,
       width: '100%',
       display: 'flex',
       justifyContent: 'center',
+      color: '#323130',
     },
     icon: {
       fontSize: '36px',
-      height: '38px',
-      width: '38px',
+      height: '42px',
+      width: '42px',
       marginRight: '0 !important' as const,
-      marginTop: '1px',
-      marginBottom: '1px',
+      marginTop: '2px',
+      marginBottom: '2px',
+    },
+    rootDisabled: {
+      color: '#a19f9d !important',
+      border: 'none !important',
+      backgroundColor: 'transparent !important',
+      '& .ms-Button-icon': {
+        color: '#a19f9d !important',
+      },
+      '& .ms-Button-flexContainer .ms-Button-icon': {
+        color: '#a19f9d !important',
+      },
+      '& .ms-Button-label': {
+        color: '#a19f9d !important',
+      },
+      '& div': {
+        color: '#a19f9d !important',
+      },
+      '&:hover': {
+        border: 'none !important',
+        backgroundColor: 'transparent !important',
+      },
     },
   };
-
-
 
   return (
     <div style={{ 
       backgroundColor: '#faf9f8', 
       borderBottom: '2px solid #e1dfdd',
-      minHeight: '95px',
+      minHeight: '85px',
       position: 'relative'
     }}>
       {/* 语言切换器 - 右上角 */}
@@ -99,8 +120,28 @@ export const Toolbar: React.FC = observer(() => {
             paddingLeft: '35%',
           },
           itemContainer: {
-            padding: '5px 0',
+            padding: '2px 0 0px 0',
             minHeight: '70px',
+          },
+          link: {
+            marginBottom: '0px',
+            paddingBottom: '0px',
+            padding: '2px 8px 0px 8px',
+            lineHeight: '1',
+            fontSize: '16px',
+            margin: '0px',
+          },
+          linkIsSelected: {
+            marginBottom: '0px',
+            paddingBottom: '0px',
+            padding: '2px 8px 0px 8px',
+            lineHeight: '1',
+            fontSize: '16px',
+            margin: '0px',
+            '&::before': {
+              bottom: '-3px',
+              height: '2px',
+            },
           },
         }}
       >
@@ -150,14 +191,14 @@ export const Toolbar: React.FC = observer(() => {
             <Stack horizontal styles={{ root: { alignItems: 'center', justifyContent: 'flex-start', padding: '0 16px', paddingLeft: '25%' } }}>
               <Stack horizontal tokens={{ childrenGap: 4 }}>
                 <CommandBarButton
-                  iconProps={{ iconName: 'Delete' }}
+                  onRenderIcon={() => <CustomIcon name="delete" size={36} />}
                   text={languageStore.t.deleteSelected}
                   onClick={deleteSelected}
                   disabled={!geometryStore.selectedShapeId}
                   styles={ribbonButtonStyle}
                 />
                 <CommandBarButton
-                  iconProps={{ iconName: 'ClearFormatting' }}
+                  onRenderIcon={() => <CustomIcon name="clear" size={36} />}
                   text={languageStore.t.clearAll}
                   onClick={clearAll}
                   disabled={geometryStore.shapes.length === 0}
