@@ -57,9 +57,6 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     // 挂载到DOM
     mountRef.current.appendChild(renderer.domElement);
 
-    // 保存到store
-    geometryStore.setThreeObjects(scene, camera, renderer);
-
     // 渲染循环
     const animate = () => {
       requestAnimationFrame(animate);
