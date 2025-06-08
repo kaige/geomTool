@@ -6,7 +6,7 @@ import { languageStore } from '../stores/LanguageStore';
 
 export const StatusBar: React.FC = observer(() => {
   return (
-    <div style={{
+    <div className="status-bar" style={{
       height: '32px',
       backgroundColor: '#f3f2f1',
       borderTop: '1px solid #e1dfdd',

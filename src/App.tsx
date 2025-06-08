@@ -39,12 +39,14 @@ const App: React.FC = observer(() => {
     const handleResize = () => {
       const sidebar = document.getElementById('sidebar');
       const toolbar = document.getElementById('toolbar');
+      const statusbar = document.querySelector('.status-bar') as HTMLElement;
       
       if (sidebar && toolbar) {
         const sidebarWidth = sidebar.offsetWidth;
         const toolbarHeight = toolbar.offsetHeight;
-        const newWidth = window.innerWidth - sidebarWidth - 4;
-        const newHeight = window.innerHeight - toolbarHeight - 6;
+        const statusbarHeight = statusbar ? statusbar.offsetHeight : 32; // StatusBar默认32px高度
+        const newWidth = window.innerWidth - sidebarWidth - 4; // 考虑边框和很小的padding
+        const newHeight = window.innerHeight - toolbarHeight - statusbarHeight - 4;
         
         setCanvasSize({
           width: Math.max(400, newWidth),
@@ -75,14 +77,14 @@ const App: React.FC = observer(() => {
               styles={{
                 root: {
                   flex: 1,
-                  padding: '3px 3px 3px 1px',
+                  padding: '1px',
                   backgroundColor: '#f5f5f5',
                   alignItems: 'center',
                   justifyContent: 'center',
                 },
               }}
             >
-              <Stack tokens={{ childrenGap: 5 }} horizontalAlign="center">
+              <Stack tokens={{ childrenGap: 1 }} horizontalAlign="center">
                 <div
                   style={{
                     border: '2px solid #ccc',
