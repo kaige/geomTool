@@ -23,11 +23,19 @@ export class GeometryStore {
   addShape(type: GeometryShape['type']): void {
     // 随机生成一个位置，避免图形重叠
     const randomPos = () => (Math.random() - 0.5) * 4; // -2到2之间的随机数
+    
+    // 根据形状类型设置不同的默认旋转角度
+    let defaultRotation = { x: 0, y: 0, z: 0 };
+    if (type === 'cube') {
+      // 立方体保持水平，正对相机显示为正方形
+      defaultRotation = { x: 0.245, y: 0.055, z: 0.283 };
+    }
+    
     const newShape: GeometryShape = {
       id: this.nextId.toString(),
       type,
       position: { x: randomPos(), y: 1, z: randomPos() }, // Y设为1，避免与地面重叠
-      rotation: { x: 0, y: 0, z: 0 },
+      rotation: defaultRotation,
       scale: { x: 1, y: 1, z: 1 },
       color: '#0078d4',
       visible: true,

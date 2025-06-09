@@ -54,6 +54,30 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     directionalLight.castShadow = true;
     scene.add(directionalLight);
 
+    // 辅助函数：开始旋转操作
+    const startRotation = (axis: 'x' | 'y' | 'z', selectedShape: any) => {
+      isRotatingObject = true;
+      rotationAxis = axis;
+      renderer.domElement.style.cursor = 'crosshair';
+      
+      if (selectedShape) {
+        dragStartObjectRotation = {
+          x: selectedShape.rotation.x,
+          y: selectedShape.rotation.y,
+          z: selectedShape.rotation.z
+        };
+      }
+    };
+
+    // 辅助函数：打印旋转值调试信息
+    const printRotationDebug = (shapeId: string, shape: any) => {
+      console.log(`[选中物体] ID: ${shapeId}, 旋转值（弧度）:`, {
+        x: shape.rotation.x.toFixed(3),
+        y: shape.rotation.y.toFixed(3),
+        z: shape.rotation.z.toFixed(3)
+      });
+    };
+
     // 挂载到DOM
     mountRef.current.appendChild(renderer.domElement);
 
@@ -68,28 +92,56 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     let isMouseDown = false;
     let mouseX = 0;
     let mouseY = 0;
+    let startMouseX = 0; // 记录拖拽开始时的鼠标X位置
+    let startMouseY = 0; // 记录拖拽开始时的鼠标Y位置
     let isDraggingObject = false; // 标记是否在拖拽物体
+    let isRotatingObject = false; // 标记是否在旋转物体
+    let rotationAxis: 'x' | 'y' | 'z' | null = null; // 当前旋转轴
     let dragStartWorldPos: THREE.Vector3 | null = null; // 拖拽开始时的世界坐标
     let dragStartObjectPos: { x: number; y: number; z: number } | null = null; // 拖拽开始时的物体位置
+    let dragStartObjectRotation: { x: number; y: number; z: number } | null = null; // 拖拽开始时的物体旋转
 
     const handleMouseDown = (event: MouseEvent) => {
       isMouseDown = true;
       mouseX = event.clientX;
       mouseY = event.clientY;
-              isDraggingObject = false;
-        dragStartWorldPos = null;
-        dragStartObjectPos = null;
+      startMouseX = event.clientX; // 记录开始位置
+      startMouseY = event.clientY;
+      isDraggingObject = false;
+      isRotatingObject = false;
+      rotationAxis = null;
+      dragStartWorldPos = null;
+      dragStartObjectPos = null;
+      dragStartObjectRotation = null;
 
-        // 检查是否点击在选中的物体上
-        if (geometryStore.selectedShapeId) {
-          const clickedShape = checkObjectAtMouse(event);
-          if (clickedShape && clickedShape === geometryStore.selectedShapeId) {
+      // 检查是否点击在选中的物体上
+      if (geometryStore.selectedShapeId) {
+        const clickedShape = checkObjectAtMouse(event);
+        if (clickedShape && clickedShape === geometryStore.selectedShapeId) {
+          const selectedShape = geometryStore.selectedShape;
+          
+          // 检查旋转快捷键并设置旋转轴
+          let targetRotationAxis: 'x' | 'y' | 'z' | null = null;
+          if (event.altKey) {
+            targetRotationAxis = 'x'; // Alt键绕X轴旋转
+          }
+          else if (event.shiftKey) {
+            targetRotationAxis = 'y'; // Shift键绕Y轴旋转
+          }
+          else if (event.ctrlKey) {
+            targetRotationAxis = 'z'; // Ctrl键绕Z轴旋转
+          }  
+          
+          if (targetRotationAxis) {
+            // 开始旋转操作
+            startRotation(targetRotationAxis, selectedShape);
+          } else {
+            // 正常拖拽移动
             isDraggingObject = true;
-            renderer.domElement.style.cursor = 'grabbing'; // 拖拽时的样式
+            renderer.domElement.style.cursor = 'grabbing';
             
             // 记录拖拽开始时的世界坐标和物体位置
             const worldPos = screenToWorld(event.clientX, event.clientY);
-            const selectedShape = geometryStore.selectedShape;
             if (worldPos && selectedShape) {
               dragStartWorldPos = worldPos.clone();
               dragStartObjectPos = {
@@ -100,6 +152,7 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
             }
           }
         }
+      }
     };
 
     // 将屏幕坐标转换为世界坐标（在选中物体的Y高度平面上）
@@ -167,35 +220,69 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       const deltaX = event.clientX - mouseX;
       const deltaY = event.clientY - mouseY;
 
-                      if (isDraggingObject && geometryStore.selectedShapeId && dragStartWorldPos && dragStartObjectPos) {
-          // 拖拽物体
-          const currentWorldPos = screenToWorld(event.clientX, event.clientY);
-          if (currentWorldPos) {
-            // 计算鼠标从开始位置到当前位置的总位移
-            const totalDeltaX = currentWorldPos.x - dragStartWorldPos.x;
-            const totalDeltaZ = currentWorldPos.z - dragStartWorldPos.z;
-            
-            // 将总位移应用到物体的起始位置上，不使用累积方式
-            geometryStore.updateShape(geometryStore.selectedShapeId, {
-              position: {
-                x: dragStartObjectPos.x + totalDeltaX,
-                y: dragStartObjectPos.y, // 保持Y不变
-                z: dragStartObjectPos.z + totalDeltaZ,
-              }
-            });
-          }
-        } else {
-          // 拖拽画布
-          const aspect = width / height;
-          const worldWidth = frustumSize * aspect;
-          const worldHeight = frustumSize;
-          
-          const deltaWorldX = (deltaX / width) * worldWidth;
-          const deltaWorldY = (deltaY / height) * worldHeight;
-          
-          camera.position.x -= deltaWorldX;
-          camera.position.z -= deltaWorldY;
+      if (isRotatingObject && geometryStore.selectedShapeId && dragStartObjectRotation && rotationAxis) {
+        // 旋转物体
+        const rotationSensitivity = 0.01; // 降低敏感度，避免过度旋转
+        
+        // 计算从开始位置到当前位置的总位移（避免累积误差）
+        const totalMouseDeltaX = (event.clientX - startMouseX) * rotationSensitivity;
+        const totalMouseDeltaY = (event.clientY - startMouseY) * rotationSensitivity;
+        
+        // 根据旋转轴确定使用哪个方向的鼠标移动
+        let rotationDelta: number;
+        switch (rotationAxis) {
+          case 'x':
+            rotationDelta = totalMouseDeltaY; // X轴旋转：垂直鼠标移动
+            break;
+          case 'y':
+            rotationDelta = totalMouseDeltaX; // Y轴旋转：水平鼠标移动
+            break;
+          case 'z':
+            rotationDelta = totalMouseDeltaX; // Z轴旋转：水平鼠标移动
+            break;
+          default:
+            rotationDelta = 0;
         }
+        
+        const newRotation = {
+          ...dragStartObjectRotation,
+          [rotationAxis]: dragStartObjectRotation[rotationAxis] + rotationDelta
+        };
+        
+        geometryStore.updateShape(geometryStore.selectedShapeId, {
+          rotation: newRotation
+        });
+        
+
+      } else if (isDraggingObject && geometryStore.selectedShapeId && dragStartWorldPos && dragStartObjectPos) {
+        // 拖拽物体
+        const currentWorldPos = screenToWorld(event.clientX, event.clientY);
+        if (currentWorldPos) {
+          // 计算鼠标从开始位置到当前位置的总位移
+          const totalDeltaX = currentWorldPos.x - dragStartWorldPos.x;
+          const totalDeltaZ = currentWorldPos.z - dragStartWorldPos.z;
+          
+          // 将总位移应用到物体的起始位置上，不使用累积方式
+          geometryStore.updateShape(geometryStore.selectedShapeId, {
+            position: {
+              x: dragStartObjectPos.x + totalDeltaX,
+              y: dragStartObjectPos.y, // 保持Y不变
+              z: dragStartObjectPos.z + totalDeltaZ,
+            }
+          });
+        }
+      } else {
+        // 拖拽画布
+        const aspect = width / height;
+        const worldWidth = frustumSize * aspect;
+        const worldHeight = frustumSize;
+        
+        const deltaWorldX = (deltaX / width) * worldWidth;
+        const deltaWorldY = (deltaY / height) * worldHeight;
+        
+        camera.position.x -= deltaWorldX;
+        camera.position.z -= deltaWorldY;
+      }
 
       mouseX = event.clientX;
       mouseY = event.clientY;
@@ -209,17 +296,20 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
         if (deltaX < 5 && deltaY < 5) {
           // 这是一个点击操作，不是拖拽
           handleClick(event);
-        } else if (!isDraggingObject) {
+        } else if (!isDraggingObject && !isRotatingObject) {
           // 这是拖拽画布操作，不处理选择逻辑
           // 拖拽画布不应该影响物体选择状态
         }
-        // 如果是拖拽物体操作(isDraggingObject = true)，保持当前选中状态不变
+        // 如果是拖拽物体操作(isDraggingObject = true)或旋转物体操作(isRotatingObject = true)，保持当前选中状态不变
       }
       
       isMouseDown = false;
       isDraggingObject = false;
+      isRotatingObject = false;
+      rotationAxis = null;
       dragStartWorldPos = null;
       dragStartObjectPos = null;
+      dragStartObjectRotation = null;
       
       // 重置鼠标样式，但要考虑鼠标是否仍在选中物体上
       const hoveredShape = checkObjectAtMouse(event);
@@ -285,11 +375,18 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
         if (clickedShapeId) {
           // 点击物体，选中该物体
           geometryStore.selectShape(clickedShapeId);
+          
+          // Debug输出：打印选中物体的旋转值（弧度）
+          const selectedShape = geometryStore.shapes.find(shape => shape.id === clickedShapeId);
+          if (selectedShape) {
+            printRotationDebug(clickedShapeId, selectedShape);
+          }
         }
       } else {
         console.log('没有检测到交点，取消选择');
         // 只有点击空白区域时，才取消选择
         geometryStore.selectShape(null);
+        console.log('[取消选择] 没有选中任何物体');
       }
     };
 
