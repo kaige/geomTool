@@ -155,8 +155,22 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       
       // 同步坐标轴相机的视角与主相机
       if (axesCamera && camera) {
-        // 复制主相机的旋转矩阵，但保持坐标轴相机的位置
-        axesCamera.rotation.copy(camera.rotation);
+        // 获取主相机的世界方向
+        const cameraDirection = new THREE.Vector3();
+        camera.getWorldDirection(cameraDirection);
+        
+        // 获取主相机的上方向
+        const cameraUp = new THREE.Vector3();
+        camera.getWorldDirection(cameraUp);
+        cameraUp.crossVectors(camera.up, cameraDirection).normalize();
+        
+        // 保持坐标轴相机在固定位置，但朝向与主相机一致
+        const axesCameraDistance = 5;
+        axesCamera.position.copy(cameraDirection).multiplyScalar(-axesCameraDistance);
+        axesCamera.lookAt(0, 0, 0);
+        
+        // 保持相机的上方向与主相机一致
+        axesCamera.up.copy(camera.up);
         axesCamera.updateMatrix();
         axesCamera.updateMatrixWorld();
       }
@@ -185,10 +199,12 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     let startMouseY = 0; // 记录拖拽开始时的鼠标Y位置
     let isDraggingObject = false; // 标记是否在拖拽物体
     let isRotatingObject = false; // 标记是否在旋转物体
+    let isRotatingCamera = false; // 标记是否在旋转相机
     let rotationAxis: 'x' | 'y' | 'z' | null = null; // 当前旋转轴
     let dragStartWorldPos: THREE.Vector3 | null = null; // 拖拽开始时的世界坐标
     let dragStartObjectPos: { x: number; y: number; z: number } | null = null; // 拖拽开始时的物体位置
     let dragStartObjectRotation: { x: number; y: number; z: number } | null = null; // 拖拽开始时的物体旋转
+    let cameraRotationStart: { azimuth: number; elevation: number } | null = null; // 相机旋转开始时的角度
 
     const handleMouseDown = (event: MouseEvent) => {
       isMouseDown = true;
@@ -198,10 +214,12 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       startMouseY = event.clientY;
       isDraggingObject = false;
       isRotatingObject = false;
+      isRotatingCamera = false;
       rotationAxis = null;
       dragStartWorldPos = null;
       dragStartObjectPos = null;
       dragStartObjectRotation = null;
+      cameraRotationStart = null;
 
       // 检查是否点击在选中的物体上
       if (geometryStore.selectedShapeId) {
@@ -241,6 +259,20 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
             }
           }
         }
+      } else if (event.ctrlKey) {
+        // 没有选中物体且按住Ctrl键，开始相机旋转
+        isRotatingCamera = true;
+        renderer.domElement.style.cursor = 'move';
+        
+        // 计算当前相机的球坐标角度
+        const cameraDirection = new THREE.Vector3();
+        camera.getWorldDirection(cameraDirection);
+        
+        // 计算方位角和仰角
+        const azimuth = Math.atan2(-cameraDirection.x, -cameraDirection.z);
+        const elevation = Math.asin(cameraDirection.y);
+        
+        cameraRotationStart = { azimuth, elevation };
       }
     };
 
@@ -342,6 +374,27 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
           rotation: newRotation
         });
         
+      } else if (isRotatingCamera && cameraRotationStart) {
+        // 旋转相机
+        const rotationSensitivity = 0.005; // 相机旋转敏感度
+        
+        // 计算从开始位置到当前位置的总鼠标移动量
+        const totalMouseDeltaX = (event.clientX - startMouseX) * rotationSensitivity;
+        const totalMouseDeltaY = (event.clientY - startMouseY) * rotationSensitivity;
+        
+        // 更新方位角和仰角
+        const newAzimuth = cameraRotationStart.azimuth - totalMouseDeltaX; // 水平旋转
+        const newElevation = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, cameraRotationStart.elevation + totalMouseDeltaY)); // 垂直旋转，限制范围
+        
+        // 计算新的相机位置（距离原点固定距离）
+        const distance = 15; // 相机距离原点的距离
+        const newCameraX = distance * Math.sin(newAzimuth) * Math.cos(newElevation);
+        const newCameraY = distance * Math.sin(newElevation);
+        const newCameraZ = distance * Math.cos(newAzimuth) * Math.cos(newElevation);
+        
+        // 更新相机位置和朝向
+        camera.position.set(newCameraX, newCameraY, newCameraZ);
+        camera.lookAt(0, 0, 0);
 
       } else if (isDraggingObject && geometryStore.selectedShapeId && dragStartWorldPos && dragStartObjectPos) {
         // 拖拽物体
@@ -360,8 +413,8 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
             }
           });
         }
-      } else {
-        // 拖拽画布
+      } else if (!isRotatingCamera) {
+        // 拖拽画布（只有在非相机旋转模式下才执行）
         const aspect = width / height;
         const worldWidth = frustumSize * aspect;
         const worldHeight = frustumSize;
@@ -385,20 +438,22 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
         if (deltaX < 5 && deltaY < 5) {
           // 这是一个点击操作，不是拖拽
           handleClick(event);
-        } else if (!isDraggingObject && !isRotatingObject) {
+        } else if (!isDraggingObject && !isRotatingObject && !isRotatingCamera) {
           // 这是拖拽画布操作，不处理选择逻辑
           // 拖拽画布不应该影响物体选择状态
         }
-        // 如果是拖拽物体操作(isDraggingObject = true)或旋转物体操作(isRotatingObject = true)，保持当前选中状态不变
+        // 如果是拖拽物体操作(isDraggingObject = true)或旋转物体操作(isRotatingObject = true)或相机旋转操作(isRotatingCamera = true)，保持当前选中状态不变
       }
       
       isMouseDown = false;
       isDraggingObject = false;
       isRotatingObject = false;
+      isRotatingCamera = false;
       rotationAxis = null;
       dragStartWorldPos = null;
       dragStartObjectPos = null;
       dragStartObjectRotation = null;
+      cameraRotationStart = null;
       
       // 重置鼠标样式，但要考虑鼠标是否仍在选中物体上
       const hoveredShape = checkObjectAtMouse(event);
@@ -518,6 +573,24 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       event.preventDefault(); // 阻止默认右键菜单
     };
 
+    // 处理键盘事件
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !geometryStore.selectedShapeId) {
+        // 没有选中任何物体时，ESC键重置相机视角
+        resetCameraToDefault();
+      }
+    };
+
+    // 重置相机到默认位置
+    const resetCameraToDefault = () => {
+      // 重置相机位置到默认的从Z轴正方向看向XOY平面
+      camera.position.set(0, 0, 15);
+      camera.lookAt(0, 0, 0);
+      camera.up.set(0, 1, 0); // 重置上方向
+      camera.updateMatrix();
+      camera.updateMatrixWorld();
+    };
+
     const currentMount = mountRef.current;
     renderer.domElement.addEventListener('mousedown', handleMouseDown);
     renderer.domElement.addEventListener('mousemove', handleMouseMove);
@@ -525,6 +598,9 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     renderer.domElement.addEventListener('mouseover', handleMouseHover);
     renderer.domElement.addEventListener('wheel', handleWheel, { passive: false });
     renderer.domElement.addEventListener('contextmenu', handleContextMenu);
+    
+    // 添加键盘事件监听器到window对象
+    window.addEventListener('keydown', handleKeyDown);
 
     return () => {
       renderer.domElement.removeEventListener('mousedown', handleMouseDown);
@@ -533,6 +609,9 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       renderer.domElement.removeEventListener('mouseover', handleMouseHover);
       renderer.domElement.removeEventListener('wheel', handleWheel);
       renderer.domElement.removeEventListener('contextmenu', handleContextMenu);
+      
+      // 移除键盘事件监听器
+      window.removeEventListener('keydown', handleKeyDown);
       
       // 清理坐标轴场景
       if (axesSceneRef.current) {
