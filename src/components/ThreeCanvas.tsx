@@ -14,6 +14,10 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
   const rendererRef = useRef<THREE.WebGLRenderer>();
   const cameraRef = useRef<THREE.OrthographicCamera>();
   const meshesRef = useRef<Map<string, THREE.Object3D>>(new Map());
+  
+  // 坐标轴相关的refs
+  const axesSceneRef = useRef<THREE.Scene>();
+  const axesCameraRef = useRef<THREE.OrthographicCamera>();
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -34,7 +38,7 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       0.1, 
       1000
     );
-    camera.position.set(0, 15, 0); // 从上方俯视XOY平面
+    camera.position.set(0, 0, 15); // 从Z轴正方向看向XOY平面
     camera.lookAt(0, 0, 0);
     cameraRef.current = camera;
 
@@ -53,6 +57,64 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     directionalLight.position.set(10, 10, 5);
     directionalLight.castShadow = true;
     scene.add(directionalLight);
+
+    // 创建坐标轴场景
+    const axesScene = new THREE.Scene();
+    axesScene.background = null; // 透明背景
+    axesSceneRef.current = axesScene;
+
+    // 创建坐标轴相机 - 与主相机保持相同的视角方向
+    const axesCamera = new THREE.OrthographicCamera(-2, 2, 2, -2, 0.1, 10);
+    axesCamera.position.set(0, 0, 5); // 初始位置，后续会与主相机同步旋转
+    axesCameraRef.current = axesCamera;
+
+    // 创建坐标轴
+    const axesGroup = new THREE.Group();
+    
+    // X轴 - 红色
+    const xGeometry = new THREE.CylinderGeometry(0.02, 0.02, 1, 8);
+    const xMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    const xAxis = new THREE.Mesh(xGeometry, xMaterial);
+    xAxis.rotation.z = -Math.PI / 2;
+    xAxis.position.x = 0.5;
+    axesGroup.add(xAxis);
+    
+    // X轴箭头
+    const xArrowGeometry = new THREE.ConeGeometry(0.05, 0.2, 8);
+    const xArrow = new THREE.Mesh(xArrowGeometry, xMaterial);
+    xArrow.rotation.z = -Math.PI / 2;
+    xArrow.position.x = 1.1;
+    axesGroup.add(xArrow);
+
+    // Y轴 - 绿色
+    const yGeometry = new THREE.CylinderGeometry(0.02, 0.02, 1, 8);
+    const yMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+    const yAxis = new THREE.Mesh(yGeometry, yMaterial);
+    yAxis.position.y = 0.5;
+    axesGroup.add(yAxis);
+    
+    // Y轴箭头
+    const yArrowGeometry = new THREE.ConeGeometry(0.05, 0.2, 8);
+    const yArrow = new THREE.Mesh(yArrowGeometry, yMaterial);
+    yArrow.position.y = 1.1;
+    axesGroup.add(yArrow);
+
+    // Z轴 - 蓝色
+    const zGeometry = new THREE.CylinderGeometry(0.02, 0.02, 1, 8);
+    const zMaterial = new THREE.MeshBasicMaterial({ color: 0x0000ff });
+    const zAxis = new THREE.Mesh(zGeometry, zMaterial);
+    zAxis.rotation.x = Math.PI / 2;
+    zAxis.position.z = 0.5;
+    axesGroup.add(zAxis);
+    
+    // Z轴箭头
+    const zArrowGeometry = new THREE.ConeGeometry(0.05, 0.2, 8);
+    const zArrow = new THREE.Mesh(zArrowGeometry, zMaterial);
+    zArrow.rotation.x = Math.PI / 2;
+    zArrow.position.z = 1.1;
+    axesGroup.add(zArrow);
+
+    axesScene.add(axesGroup);
 
     // 辅助函数：开始旋转操作
     const startRotation = (axis: 'x' | 'y' | 'z', selectedShape: any) => {
@@ -84,7 +146,34 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     // 渲染循环
     const animate = () => {
       requestAnimationFrame(animate);
+      
+      // 首先渲染主场景到整个画布
+      renderer.setViewport(0, 0, width, height);
+      renderer.setScissor(0, 0, width, height);
+      renderer.setScissorTest(false);
       renderer.render(scene, camera);
+      
+      // 同步坐标轴相机的视角与主相机
+      if (axesCamera && camera) {
+        // 复制主相机的旋转矩阵，但保持坐标轴相机的位置
+        axesCamera.rotation.copy(camera.rotation);
+        axesCamera.updateMatrix();
+        axesCamera.updateMatrixWorld();
+      }
+      
+      // 然后在左下角小区域渲染坐标轴
+      const axesViewportSize = 100; // 坐标轴视口大小
+      renderer.setViewport(10, 10, axesViewportSize, axesViewportSize);
+      renderer.setScissor(10, 10, axesViewportSize, axesViewportSize);
+      renderer.setScissorTest(true);
+      
+      // 清空坐标轴区域的深度缓冲，确保坐标轴始终显示在最前面
+      renderer.autoClear = false;
+      renderer.clear(false, true, false); // 只清空深度缓冲，不清空颜色和模板缓冲
+      renderer.render(axesScene, axesCamera);
+      renderer.autoClear = true;
+      
+      renderer.setScissorTest(false);
     };
     animate();
 
@@ -424,12 +513,18 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       }
     };
 
+    // 处理右键菜单禁用
+    const handleContextMenu = (event: MouseEvent) => {
+      event.preventDefault(); // 阻止默认右键菜单
+    };
+
     const currentMount = mountRef.current;
     renderer.domElement.addEventListener('mousedown', handleMouseDown);
     renderer.domElement.addEventListener('mousemove', handleMouseMove);
     renderer.domElement.addEventListener('mouseup', handleMouseUp);
     renderer.domElement.addEventListener('mouseover', handleMouseHover);
     renderer.domElement.addEventListener('wheel', handleWheel, { passive: false });
+    renderer.domElement.addEventListener('contextmenu', handleContextMenu);
 
     return () => {
       renderer.domElement.removeEventListener('mousedown', handleMouseDown);
@@ -437,6 +532,23 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       renderer.domElement.removeEventListener('mouseup', handleMouseUp);
       renderer.domElement.removeEventListener('mouseover', handleMouseHover);
       renderer.domElement.removeEventListener('wheel', handleWheel);
+      renderer.domElement.removeEventListener('contextmenu', handleContextMenu);
+      
+      // 清理坐标轴场景
+      if (axesSceneRef.current) {
+        axesSceneRef.current.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) {
+              if (Array.isArray(child.material)) {
+                child.material.forEach(material => material.dispose());
+              } else {
+                child.material.dispose();
+              }
+            }
+          }
+        });
+      }
       
       if (currentMount && renderer.domElement) {
         currentMount.removeChild(renderer.domElement);

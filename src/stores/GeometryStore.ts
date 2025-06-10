@@ -28,7 +28,7 @@ export class GeometryStore {
     let defaultRotation = { x: 0, y: 0, z: 0 };
     if (type === 'cube') {
       // 立方体保持水平，正对相机显示为正方形
-      defaultRotation = { x: 0.245, y: 0.055, z: 0.283 };
+      defaultRotation = { x: 1.745, y: 0.055, z: 0.283 };
     }
     
     const newShape: GeometryShape = {
