@@ -419,11 +419,28 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
         const worldWidth = frustumSize * aspect;
         const worldHeight = frustumSize;
         
-        const deltaWorldX = (deltaX / width) * worldWidth;
-        const deltaWorldY = (deltaY / height) * worldHeight;
+        // 计算屏幕空间的移动量
+        const deltaScreenX = (deltaX / width) * worldWidth;
+        const deltaScreenY = (deltaY / height) * worldHeight;
         
-        camera.position.x -= deltaWorldX;
-        camera.position.z -= deltaWorldY;
+        // 获取相机的右方向向量和上方向向量
+        const cameraRight = new THREE.Vector3();
+        const cameraUp = new THREE.Vector3();
+        
+        // 计算相机的右方向（世界坐标系中的右方向）
+        camera.getWorldDirection(cameraRight);
+        cameraRight.cross(camera.up).normalize();
+        
+        // 计算相机的上方向（在相机平面内的上方向）
+        cameraUp.crossVectors(cameraRight, camera.getWorldDirection(new THREE.Vector3())).normalize();
+        
+        // 基于相机的局部坐标系计算移动向量
+        const moveVector = new THREE.Vector3();
+        moveVector.addScaledVector(cameraRight, -deltaScreenX); // 水平移动（右方向）
+        moveVector.addScaledVector(cameraUp, deltaScreenY); // 垂直移动（上方向）
+        
+        // 应用移动
+        camera.position.add(moveVector);
       }
 
       mouseX = event.clientX;
