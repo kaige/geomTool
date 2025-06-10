@@ -64,7 +64,8 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     axesSceneRef.current = axesScene;
 
     // 创建坐标轴相机 - 与主相机保持相同的视角方向
-    const axesCamera = new THREE.OrthographicCamera(-2, 2, 2, -2, 0.1, 10);
+    const axesFrustumSize = 2 / 1.8; // 缩小视锥体来放大坐标轴（1.8倍）
+    const axesCamera = new THREE.OrthographicCamera(-axesFrustumSize, axesFrustumSize, axesFrustumSize, -axesFrustumSize, 0.1, 10);
     axesCamera.position.set(0, 0, 5); // 初始位置，后续会与主相机同步旋转
     axesCameraRef.current = axesCamera;
 
@@ -177,8 +178,9 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       
       // 然后在左下角小区域渲染坐标轴
       const axesViewportSize = 100; // 坐标轴视口大小
-      renderer.setViewport(10, 10, axesViewportSize, axesViewportSize);
-      renderer.setScissor(10, 10, axesViewportSize, axesViewportSize);
+      const axesOffset = 5; // 边距设为5px
+      renderer.setViewport(axesOffset, axesOffset, axesViewportSize, axesViewportSize);
+      renderer.setScissor(axesOffset, axesOffset, axesViewportSize, axesViewportSize);
       renderer.setScissorTest(true);
       
       // 清空坐标轴区域的深度缓冲，确保坐标轴始终显示在最前面
