@@ -278,7 +278,7 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       }
     };
 
-    // 将屏幕坐标转换为世界坐标（在选中物体的Y高度平面上）
+    // 将屏幕坐标转换为世界坐标（在与相机视角垂直的平面上）
     const screenToWorld = (screenX: number, screenY: number): THREE.Vector3 | null => {
       const rect = renderer.domElement.getBoundingClientRect();
       const mouse = new THREE.Vector2();
@@ -288,14 +288,24 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       const raycaster = new THREE.Raycaster();
       raycaster.setFromCamera(mouse, camera);
 
-      // 使用选中物体的Y坐标作为平面高度，如果没有选中物体则使用Y=1
-      let planeY = 1; // 默认高度
+      // 获取相机的视线方向作为平面法向量
+      const cameraDirection = new THREE.Vector3();
+      camera.getWorldDirection(cameraDirection);
+      
+      // 确定平面通过的点：如果有选中物体则使用其位置，否则使用原点
+      let planePoint = new THREE.Vector3(0, 0, 0);
       if (geometryStore.selectedShape) {
-        planeY = geometryStore.selectedShape.position.y;
+        planePoint.set(
+          geometryStore.selectedShape.position.x,
+          geometryStore.selectedShape.position.y,
+          geometryStore.selectedShape.position.z
+        );
       }
       
-      // 创建一个在指定Y高度的平面，用于计算交点
-      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -planeY);
+      // 创建与相机视角垂直的平面（法向量为相机方向）
+      const plane = new THREE.Plane();
+      plane.setFromNormalAndCoplanarPoint(cameraDirection, planePoint);
+      
       const intersectPoint = new THREE.Vector3();
       
       if (raycaster.ray.intersectPlane(plane, intersectPoint)) {
@@ -402,16 +412,17 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
         // 拖拽物体
         const currentWorldPos = screenToWorld(event.clientX, event.clientY);
         if (currentWorldPos) {
-          // 计算鼠标从开始位置到当前位置的总位移
-          const totalDeltaX = currentWorldPos.x - dragStartWorldPos.x;
-          const totalDeltaZ = currentWorldPos.z - dragStartWorldPos.z;
+          // 计算鼠标从开始位置到当前位置的总位移向量
+          const totalDelta = new THREE.Vector3();
+          totalDelta.subVectors(currentWorldPos, dragStartWorldPos);
           
           // 将总位移应用到物体的起始位置上，不使用累积方式
+          // 现在移动可能在X、Y、Z三个轴上都有分量
           geometryStore.updateShape(geometryStore.selectedShapeId, {
             position: {
-              x: dragStartObjectPos.x + totalDeltaX,
-              y: dragStartObjectPos.y, // 保持Y不变
-              z: dragStartObjectPos.z + totalDeltaZ,
+              x: dragStartObjectPos.x + totalDelta.x,
+              y: dragStartObjectPos.y + totalDelta.y,
+              z: dragStartObjectPos.z + totalDelta.z,
             }
           });
         }
