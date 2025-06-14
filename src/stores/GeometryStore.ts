@@ -8,6 +8,7 @@ export interface GeometryShape {
   scale: { x: number; y: number; z: number };
   color: string;
   visible: boolean;
+  hasChanged?: boolean;  // 添加变化标记
 }
 
 export class GeometryStore {
@@ -39,6 +40,7 @@ export class GeometryStore {
       scale: { x: 1, y: 1, z: 1 },
       color: '#0078d4',
       visible: true,
+      hasChanged: true  // 新添加的图形标记为已变化
     };
     this.shapes.push(newShape);
     this.nextId++; // 自增ID
@@ -54,6 +56,22 @@ export class GeometryStore {
 
   // 选择图形
   selectShape(id: string | null): void {
+    // 如果之前有选中的物体，将其标记为已变化
+    if (this.selectedShapeId) {
+      const oldSelectedShape = this.shapes.find(shape => shape.id === this.selectedShapeId);
+      if (oldSelectedShape) {
+        oldSelectedShape.hasChanged = true;
+      }
+    }
+    
+    // 如果新选中的物体存在，将其标记为已变化
+    if (id) {
+      const newSelectedShape = this.shapes.find(shape => shape.id === id);
+      if (newSelectedShape) {
+        newSelectedShape.hasChanged = true;
+      }
+    }
+    
     this.selectedShapeId = id;
   }
 
@@ -61,7 +79,9 @@ export class GeometryStore {
   updateShape(id: string, updates: Partial<GeometryShape>): void {
     const shapeIndex = this.shapes.findIndex(shape => shape.id === id);
     if (shapeIndex !== -1) {
-      this.shapes[shapeIndex] = { ...this.shapes[shapeIndex], ...updates };
+      const oldShape = this.shapes[shapeIndex];
+      const newShape = { ...oldShape, ...updates, hasChanged: true };
+      this.shapes[shapeIndex] = newShape;
     }
   }
 
@@ -72,7 +92,17 @@ export class GeometryStore {
       : null;
   }
 
+  // 获取已变化的图形
+  get changedShapes(): GeometryShape[] {
+    return this.shapes.filter(shape => shape.hasChanged);
+  }
 
+  // 重置变化标记
+  resetChangeFlags(): void {
+    this.shapes.forEach(shape => {
+      shape.hasChanged = false;
+    });
+  }
 
   // 清空所有图形
   clearShapes(): void {

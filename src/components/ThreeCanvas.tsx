@@ -667,17 +667,20 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     const scene = sceneRef.current;
     const meshes = meshesRef.current;
 
+    // 1. 删除不再存在的对象
     meshes.forEach((meshGroup, id) => {
       if (!geometryStore.shapes.find(shape => shape.id === id)) {
         if (meshGroup instanceof THREE.Group) {
           scene.remove(meshGroup);
           meshGroup.children.forEach(child => {
             if (child instanceof THREE.LineSegments || child instanceof THREE.Mesh) {
-              if (child.geometry instanceof THREE.BufferGeometry) {
-                child.geometry.dispose();
-              }
-              if (child.material instanceof THREE.Material) {
-                child.material.dispose();
+              if (child.geometry) child.geometry.dispose();
+              if (child.material) {
+                if (Array.isArray(child.material)) {
+                  child.material.forEach(material => material.dispose());
+                } else {
+                  child.material.dispose();
+                }
               }
             }
           });
@@ -686,12 +689,14 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       }
     });
 
+    // 2. 更新或创建对象
     geometryStore.shapes.forEach(shape => {
       let meshGroup = meshes.get(shape.id);
+      let needsUpdate = shape.hasChanged;  // 使用 hasChanged 标记判断是否需要更新
 
       if (!meshGroup) {
+        // 创建新对象
         meshGroup = new THREE.Group();
-        
         const geometry = createGeometry(shape.type);
         
         const edges = new THREE.EdgesGeometry(geometry);
@@ -709,9 +714,44 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
         
         scene.add(meshGroup);
         meshes.set(shape.id, meshGroup);
+        needsUpdate = true;
+      } else if (needsUpdate) {
+        // 检查是否需要更新
+        const currentMesh = meshGroup as THREE.Group;
+        const currentPosition = currentMesh.position;
+        const currentRotation = currentMesh.rotation;
+        const currentScale = currentMesh.scale;
+        const currentVisible = currentMesh.visible;
+        
+        // 检查位置、旋转、缩放、可见性是否变化
+        if (
+          currentPosition.x !== shape.position.x ||
+          currentPosition.y !== shape.position.y ||
+          currentPosition.z !== shape.position.z ||
+          currentRotation.x !== shape.rotation.x ||
+          currentRotation.y !== shape.rotation.y ||
+          currentRotation.z !== shape.rotation.z ||
+          currentScale.x !== shape.scale.x ||
+          currentScale.y !== shape.scale.y ||
+          currentScale.z !== shape.scale.z ||
+          currentVisible !== shape.visible
+        ) {
+          needsUpdate = true;
+        }
+
+        // 检查颜色是否变化
+        const lineSegments = currentMesh.children.find(child => child instanceof THREE.LineSegments);
+        if (lineSegments instanceof THREE.LineSegments && lineSegments.material instanceof THREE.LineBasicMaterial) {
+          const isSelected = geometryStore.selectedShapeId === shape.id;
+          const newColor = isSelected ? '#ff6b35' : shape.color;
+          if (lineSegments.material.color.getHexString() !== newColor.replace('#', '')) {
+            needsUpdate = true;
+          }
+        }
       }
 
-      if (meshGroup instanceof THREE.Group) {
+      // 只在需要时更新
+      if (needsUpdate && meshGroup instanceof THREE.Group) {
         meshGroup.position.set(shape.position.x, shape.position.y, shape.position.z);
         meshGroup.rotation.set(shape.rotation.x, shape.rotation.y, shape.rotation.z);
         meshGroup.scale.set(shape.scale.x, shape.scale.y, shape.scale.z);
@@ -725,6 +765,9 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
         }
       }
     });
+
+    // 重置所有变化标记
+    geometryStore.resetChangeFlags();
   };
 
   // 直接调用updateScene，让MobX observer处理重新渲染
