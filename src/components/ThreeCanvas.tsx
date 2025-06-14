@@ -640,6 +640,8 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     };
   }, [width, height]);
 
+  //////// all above are for useEffect, useEffect is called once when the component is mounted ////////
+
   // 创建几何体
   const createGeometry = (type: GeometryShape['type']): THREE.BufferGeometry => {
     switch (type) {
@@ -727,6 +729,8 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
 
   // 直接调用updateScene，让MobX observer处理重新渲染
   updateScene();
+
+  //////// all above are for updateScene, updateScene is called everytime the geometryStore is updated ////////
 
   return <div ref={mountRef} style={{ width, height }} />;
 }); 
