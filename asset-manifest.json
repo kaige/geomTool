@@ -1,13 +1,13 @@
 {
   "files": {
     "main.css": "/geomTool/static/css/main.80ebcd83.css",
-    "main.js": "/geomTool/static/js/main.a67c7c56.js",
+    "main.js": "/geomTool/static/js/main.c056fe2e.js",
     "index.html": "/geomTool/index.html",
     "main.80ebcd83.css.map": "/geomTool/static/css/main.80ebcd83.css.map",
-    "main.a67c7c56.js.map": "/geomTool/static/js/main.a67c7c56.js.map"
+    "main.c056fe2e.js.map": "/geomTool/static/js/main.c056fe2e.js.map"
   },
   "entrypoints": [
     "static/css/main.80ebcd83.css",
-    "static/js/main.a67c7c56.js"
+    "static/js/main.c056fe2e.js"
   ]
 }
