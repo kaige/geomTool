@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import { observer } from 'mobx-react';
 import * as THREE from 'three';
 import { geometryStore, GeometryShape } from '../stores/GeometryStore';
@@ -36,6 +36,20 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     dragStartObjectRotation: null as { x: number; y: number; z: number } | null,
     cameraRotationStart: null as { azimuth: number; elevation: number } | null,
   });
+
+  // 用于防止updateScene函数重复执行，避免在更新过程中触发新的更新
+  // 这是一个防重复执行的锁
+  // 当 updateScene 函数正在执行时，将其设置为 true
+  // 防止在更新过程中触发新的更新，避免可能的死循环或性能问题
+  //
+  const isUpdatingRef = useRef(false);
+  // 用于标记是否需要重置geometryStore中的hasChanged状态，避免在渲染过程中直接修改MobX状态
+  // 这是一个状态更新标记
+  // 当场景中的对象发生变化时（如添加、删除、修改等），将其设置为 true
+  // 在 useEffect 中检查这个标记，决定是否需要重置 geometryStore 中的 hasChanged 状态
+  // 这样可以避免在 React 渲染过程中直接修改 MobX 状态，防止出现警告或错误
+  // 
+  const needsUpdateRef = useRef(false);
 
   // 辅助函数：开始旋转操作
   const startRotation = (axis: 'x' | 'y' | 'z', selectedShape: any) => {
@@ -660,10 +674,10 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     }
   };
 
-  // 更新场景中的物体 - 使用一个没有依赖的useEffect，让MobX observer自动处理响应式更新
-  const updateScene = () => {
-    if (!sceneRef.current) return;
+  const updateScene = useCallback(() => {
+    if (!sceneRef.current || isUpdatingRef.current) return;
 
+    isUpdatingRef.current = true;
     const scene = sceneRef.current;
     const meshes = meshesRef.current;
 
@@ -686,6 +700,7 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
           });
         }
         meshes.delete(id);
+        needsUpdateRef.current = true;
       }
     });
 
@@ -715,6 +730,7 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
         scene.add(meshGroup);
         meshes.set(shape.id, meshGroup);
         needsUpdate = true;
+        needsUpdateRef.current = true;
       } else if (needsUpdate) {
         // 检查是否需要更新
         const currentMesh = meshGroup as THREE.Group;
@@ -737,6 +753,7 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
           currentVisible !== shape.visible
         ) {
           needsUpdate = true;
+          needsUpdateRef.current = true;
         }
 
         // 检查颜色是否变化
@@ -746,6 +763,7 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
           const newColor = isSelected ? '#ff6b35' : shape.color;
           if (lineSegments.material.color.getHexString() !== newColor.replace('#', '')) {
             needsUpdate = true;
+            needsUpdateRef.current = true;
           }
         }
       }
@@ -766,9 +784,16 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       }
     });
 
-    // 重置所有变化标记
-    geometryStore.resetChangeFlags();
-  };
+    isUpdatingRef.current = false;
+  }, [geometryStore.shapes, geometryStore.selectedShapeId]);
+
+  // 使用useEffect来处理状态更新
+  useEffect(() => {
+    if (needsUpdateRef.current) {
+      geometryStore.resetChangeFlags();
+      needsUpdateRef.current = false;
+    }
+  }, [geometryStore.shapes, geometryStore.selectedShapeId]);
 
   // 直接调用updateScene，让MobX observer处理重新渲染
   updateScene();
