@@ -1,4 +1,4 @@
-import { makeAutoObservable } from 'mobx';
+import { makeAutoObservable, action } from 'mobx';
 
 export interface GeometryShape {
   id: string;
@@ -98,7 +98,8 @@ export class GeometryStore {
   }
 
   // 重置变化标记
-  resetChangeFlags(): void {
+  @action
+  resetChangeFlags() {
     this.shapes.forEach(shape => {
       shape.hasChanged = false;
     });
