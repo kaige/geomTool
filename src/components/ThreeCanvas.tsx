@@ -3,6 +3,65 @@ import { observer } from 'mobx-react';
 import * as THREE from 'three';
 import { geometryStore, GeometryShape } from '../stores/GeometryStore';
 
+// 创建边缘线段的工具函数
+function createEdgeSegments(
+  edges: CustomEdgesGeometry,
+  shapeColor: string,
+  meshGroup: THREE.Group
+): { solidLineSegments: THREE.LineSegments; dashedLineSegments: THREE.LineSegments } {
+  // 创建实线边缘
+  const solidLineMaterial = new THREE.LineBasicMaterial({ 
+    color: shapeColor,
+    linewidth: 1
+  });
+  const solidLineGeometry = new THREE.BufferGeometry();
+  solidLineGeometry.setAttribute('position', edges.solidEdges);
+  const solidLineSegments = new THREE.LineSegments(solidLineGeometry, solidLineMaterial);
+  meshGroup.add(solidLineSegments);
+
+  // 创建虚线边缘
+  const dashedLineMaterial = new THREE.LineDashedMaterial({ 
+    color: 0x00aaff,  // 比 #0078d4 更浅的蓝色
+    dashSize: 0.02,   // 虚线大小
+    gapSize: 0.008,   // 间隔大小
+    linewidth: 0.5    // 线宽
+  });
+  const dashedLineGeometry = new THREE.BufferGeometry();
+  dashedLineGeometry.setAttribute('position', edges.dashedEdges);
+  const dashedLineSegments = new THREE.LineSegments(dashedLineGeometry, dashedLineMaterial);
+  
+  // 计算线段距离
+  dashedLineSegments.computeLineDistances();
+  meshGroup.add(dashedLineSegments);
+
+  return { solidLineSegments, dashedLineSegments };
+}
+
+// 更新面的颜色的工具函数
+function updateFaceColors(
+  geometry: THREE.BufferGeometry,
+  edges: CustomEdgesGeometry,
+  camera: THREE.Camera,
+  meshGroup: THREE.Group
+): void {
+  const colors = new Float32Array(geometry.attributes.position.count * 3);
+  const faces = edges.calculateFacesVisibility(
+    geometry,
+    camera,
+    meshGroup
+  );
+  faces.forEach((face) => {
+    const color = face.visible ? [0, 1, 0] : [1, 0, 0]; // 绿色表示可见，红色表示不可见
+    for (let i = 0; i < 3; i++) {
+      const vertexIndex = face.vertices[i];
+      colors[vertexIndex * 3] = color[0];
+      colors[vertexIndex * 3 + 1] = color[1];
+      colors[vertexIndex * 3 + 2] = color[2];
+    }
+  });
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+}
+
 // 自定义的 EdgesGeometry，根据面的可见性和夹角决定边的显示
 class CustomEdgesGeometry extends THREE.EdgesGeometry {
   public static DEBUG_SHOW_NORMALS = false;  // 改为公共静态属性
@@ -963,6 +1022,10 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     });
 
     // 2. 更新或创建对象
+    //
+    // 调试开关
+    const DEBUG_SHOW_FACES_VISIBILITY_BY_COLOR = false;
+    
     geometryStore.shapes.forEach(shape => {
       let meshGroup = meshes.get(shape.id);
       let needsUpdate = shape.hasChanged;  // 使用 hasChanged 标记判断是否需要更新
@@ -986,61 +1049,25 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
         
         const edges = new CustomEdgesGeometry(geometry);
         
-        // 创建实线边缘
-        const solidLineMaterial = new THREE.LineBasicMaterial({ 
-          color: shape.color,
-          linewidth: 1
-        });
-        const solidLineGeometry = new THREE.BufferGeometry();
-        solidLineGeometry.setAttribute('position', edges.solidEdges);
-        const solidLineSegments = new THREE.LineSegments(solidLineGeometry, solidLineMaterial);
-        meshGroup.add(solidLineSegments);
+        // 使用工具函数创建边缘线段
+        createEdgeSegments(edges, shape.color, meshGroup as THREE.Group);
+        
 
-        // 创建虚线边缘
-        const dashedLineMaterial = new THREE.LineDashedMaterial({ 
-          color: 0xff0000,  // 红色
-          dashSize: 0.02,   // 恢复为更细的虚线
-          gapSize: 0.008,   // 恢复为更细的虚线
-          linewidth: 0.5    // 保持线宽不变
-        });
-        const dashedLineGeometry = new THREE.BufferGeometry();
-        dashedLineGeometry.setAttribute('position', edges.dashedEdges);
-        const dashedLineSegments = new THREE.LineSegments(dashedLineGeometry, dashedLineMaterial);
-        
-        // 计算线段距离
-        dashedLineSegments.computeLineDistances();
-        
-        meshGroup.add(dashedLineSegments);
-        
-        // 调试开关
-        const DEBUG_SHOW_FACES = false;
         const solidMaterial = new THREE.MeshBasicMaterial({ 
-          transparent: true, 
-          opacity: DEBUG_SHOW_FACES ? 0.3 : 0,  // 根据调试开关控制面的显示
+          transparent: true,
+          opacity: DEBUG_SHOW_FACES_VISIBILITY_BY_COLOR ? 0.3 : 0,  // 根据调试开关控制面的显示
           side: THREE.DoubleSide,
           vertexColors: true
         });
         const solidMesh = new THREE.Mesh(geometry.clone(), solidMaterial);
 
-        // 添加顶点颜色属性
-        const colors = new Float32Array(geometry.attributes.position.count * 3);
-        const faces = edges.calculateFacesVisibility(
-          geometry,
-          cameraRef.current!,
-          meshGroup as THREE.Group
-        );
-        faces.forEach((face, index) => {
-          const color = face.visible ? [0, 1, 0] : [1, 0, 0]; // 绿色表示可见，红色表示不可见
-          for (let i = 0; i < 3; i++) {
-            const vertexIndex = face.vertices[i];
-            colors[vertexIndex * 3] = color[0];
-            colors[vertexIndex * 3 + 1] = color[1];
-            colors[vertexIndex * 3 + 2] = color[2];
-          }
-        });
-        solidMesh.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-        meshGroup.add(solidMesh);
         
+        if (DEBUG_SHOW_FACES_VISIBILITY_BY_COLOR) {
+          // 使用工具函数更新面的颜色
+          updateFaceColors(solidMesh.geometry, edges, cameraRef.current!, meshGroup as THREE.Group);
+        }
+        
+        meshGroup.add(solidMesh);
         scene.add(meshGroup);
         meshes.set(shape.id, meshGroup);
         needsUpdate = true;
@@ -1078,7 +1105,7 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
           meshGroup.updateMatrixWorld(true);
 
           // 重新计算边缘
-          const solidMesh = meshGroup.children.find(child => child instanceof THREE.Mesh) as THREE.Mesh;
+          const solidMesh = currentMesh.children.find(child => child instanceof THREE.Mesh) as THREE.Mesh;
           if (solidMesh && solidMesh.geometry) {
             // 更新相机信息
             solidMesh.geometry.userData.camera = cameraRef.current;
@@ -1089,23 +1116,10 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
             // 重新创建边缘几何体
             const edges = new CustomEdgesGeometry(solidMesh.geometry);
 
-            // 更新面的颜色
-            const colors = new Float32Array(solidMesh.geometry.attributes.position.count * 3);
-            const faces = edges.calculateFacesVisibility(
-              solidMesh.geometry,
-              cameraRef.current!,
-              meshGroup as THREE.Group
-            );
-            faces.forEach((face, index) => {
-              const color = face.visible ? [0, 1, 0] : [1, 0, 0]; // 绿色表示可见，红色表示不可见
-              for (let i = 0; i < 3; i++) {
-                const vertexIndex = face.vertices[i];
-                colors[vertexIndex * 3] = color[0];
-                colors[vertexIndex * 3 + 1] = color[1];
-                colors[vertexIndex * 3 + 2] = color[2];
-              }
-            });
-            solidMesh.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            if (DEBUG_SHOW_FACES_VISIBILITY_BY_COLOR) {
+              // 使用工具函数更新面的颜色
+              updateFaceColors(solidMesh.geometry, edges, cameraRef.current!, meshGroup as THREE.Group);
+            }
 
             // 删除旧的边缘线段和法向量线
             const group = meshGroup as THREE.Group;
@@ -1123,31 +1137,8 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
               }
             });
 
-            // 创建实线边缘
-            const solidLineMaterial = new THREE.LineBasicMaterial({ 
-              color: shape.color,
-              linewidth: 1
-            });
-            const solidLineGeometry = new THREE.BufferGeometry();
-            solidLineGeometry.setAttribute('position', edges.solidEdges);
-            const solidLineSegments = new THREE.LineSegments(solidLineGeometry, solidLineMaterial);
-            meshGroup.add(solidLineSegments);
-
-            // 创建虚线边缘
-            const dashedLineMaterial = new THREE.LineDashedMaterial({ 
-              color: 0xff0000,  // 红色
-              dashSize: 0.02,   // 恢复为更细的虚线
-              gapSize: 0.008,   // 恢复为更细的虚线
-              linewidth: 0.5    // 保持线宽不变
-            });
-            const dashedLineGeometry = new THREE.BufferGeometry();
-            dashedLineGeometry.setAttribute('position', edges.dashedEdges);
-            const dashedLineSegments = new THREE.LineSegments(dashedLineGeometry, dashedLineMaterial);
-            
-            // 计算线段距离
-            dashedLineSegments.computeLineDistances();
-            
-            meshGroup.add(dashedLineSegments);
+            // 使用工具函数创建边缘线段
+            createEdgeSegments(edges, shape.color, meshGroup as THREE.Group);
           }
         }
 
@@ -1177,7 +1168,6 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
 
   // 直接调用updateScene，让MobX observer处理重新渲染
   updateScene();
-
   //////// all above are for updateScene, updateScene is called everytime the geometryStore is updated ////////
 
   return <div ref={mountRef} style={{ width, height }} />;
