@@ -23,24 +23,6 @@ class CustomEdgesGeometry extends THREE.EdgesGeometry {
     this.faces = [];
 
     // 获取必要的属性
-    const normalAttribute = geometry.getAttribute('normal') as THREE.BufferAttribute;
-    if (!normalAttribute) {
-      console.warn('Geometry has no normal attribute');
-      return;
-    }
-
-    const indexAttribute = geometry.getIndex();
-    if (!indexAttribute) {
-      console.warn('Geometry has no index attribute');
-      return;
-    }
-
-    const positionAttribute = geometry.getAttribute('position') as THREE.BufferAttribute;
-    if (!positionAttribute) {
-      console.warn('Geometry has no position attribute');
-      return;
-    }
-
     const camera = geometry.userData.camera as THREE.Camera;
     if (!camera) {
       console.warn('Geometry has no camera information');
@@ -60,101 +42,37 @@ class CustomEdgesGeometry extends THREE.EdgesGeometry {
     }
 
     // 存储每个面的可见性和法线
-    const facesArr: Array<{
-      normal: THREE.Vector3;
-      visible: boolean;
-      vertices: number[];
-    }> = [];
-    for (let faceIndex = 0; faceIndex < indexAttribute.count / 3; faceIndex++) {
-      const a = indexAttribute.getX(faceIndex * 3);
-      
-      // 从normalAttribute获取法向量并转换到世界坐标系
-      const faceNormal = new THREE.Vector3(
-        normalAttribute.getX(a),
-        normalAttribute.getY(a),
-        normalAttribute.getZ(a)
-      ).normalize();
-      
-      // get rotation matrix from meshGroup.matrixWorld
-      const rotationMatrix = new THREE.Matrix3().setFromMatrix4(meshGroup.matrixWorld);
-      const worldFaceNormal = faceNormal.clone().applyMatrix3(rotationMatrix).normalize();
-      
-      // 使用相机的LookAt方向（负的z轴方向）作为视线方向
-      const toCamera = new THREE.Vector3(0, 0, -1);
-      camera.getWorldDirection(toCamera);
-      
-      // 计算面的可见性
-      const isVisible = worldFaceNormal.dot(toCamera) < 0;
-
-      if (CustomEdgesGeometry.DEBUG_SHOW_NORMALS) {
-        console.log('meshGroup.matrixWorld: ', meshGroup.matrixWorld.elements);
-        console.log('faceIndex: ', faceIndex);
-        console.log('faceNormal: ', faceNormal);
-        console.log('worldFaceNormal: ', worldFaceNormal);  
-        console.log('toCamera: ', toCamera);
-        console.log('isVisible: ', isVisible);
-      }
-      
-      // 计算面的中心点
-      const center = new THREE.Vector3();
-      for (let i = 0; i < 3; i++) {
-        const vertexIndex = indexAttribute.getX(faceIndex * 3 + i);
-        center.add(new THREE.Vector3(
-          positionAttribute.getX(vertexIndex),
-          positionAttribute.getY(vertexIndex),
-          positionAttribute.getZ(vertexIndex)
-        ));
-      }
-      center.divideScalar(3);
-
-      // 创建法向量线
-      if (CustomEdgesGeometry.DEBUG_SHOW_NORMALS) {
-        const normalLine = new THREE.Line(
-          new THREE.BufferGeometry().setFromPoints([
-            center,
-            center.clone().add(faceNormal.multiplyScalar(0.5))
-          ]),
-          new THREE.LineBasicMaterial({
-            color: this.getNormalColor(faceNormal.normalize()),
-            linewidth: 2
-          })
-        );
-        normalLinesGroup.add(normalLine);
-      }
-      
-      facesArr.push({
-        normal: faceNormal,
-        visible: isVisible,
-        vertices: [a, a + 1, a + 2]
-      });
-    }
-
-    this.faces = facesArr;
+    this.faces = this.calculateFacesVisibility(
+      geometry,
+      camera,
+      meshGroup,
+      normalLinesGroup
+    );
 
     // 存储边的信息
     const edgeMap = new Map();
 
     // 遍历所有面，建立邻接关系
-    for (let i = 0; i < indexAttribute.count; i += 3) {
-      const a = indexAttribute.getX(i);
-      const b = indexAttribute.getX(i + 1);
-      const c = indexAttribute.getX(i + 2);
+    for (let i = 0; i < geometry.getIndex()!.count; i += 3) {
+      const a = geometry.getIndex()!.getX(i);
+      const b = geometry.getIndex()!.getX(i + 1);
+      const c = geometry.getIndex()!.getX(i + 2);
 
       // 获取顶点位置
       const posA = new THREE.Vector3(
-        positionAttribute.getX(a),
-        positionAttribute.getY(a),
-        positionAttribute.getZ(a)
+        geometry.getAttribute('position')!.getX(a),
+        geometry.getAttribute('position')!.getY(a),
+        geometry.getAttribute('position')!.getZ(a)
       );
       const posB = new THREE.Vector3(
-        positionAttribute.getX(b),
-        positionAttribute.getY(b),
-        positionAttribute.getZ(b)
+        geometry.getAttribute('position')!.getX(b),
+        geometry.getAttribute('position')!.getY(b),
+        geometry.getAttribute('position')!.getZ(b)
       );
       const posC = new THREE.Vector3(
-        positionAttribute.getX(c),
-        positionAttribute.getY(c),
-        positionAttribute.getZ(c)
+        geometry.getAttribute('position')!.getX(c),
+        geometry.getAttribute('position')!.getY(c),
+        geometry.getAttribute('position')!.getZ(c)
       );
 
       // 存储每条边对应的面
@@ -229,17 +147,104 @@ class CustomEdgesGeometry extends THREE.EdgesGeometry {
      this.dashedEdges = new THREE.BufferAttribute(new Float32Array(dashedEdgesArray), 3);
   }
 
+  // 修改为公共方法
+  public calculateFacesVisibility(
+    geometry: THREE.BufferGeometry,
+    camera: THREE.Camera,
+    meshGroup: THREE.Group,
+    normalLinesGroup?: THREE.Group
+  ): Array<{
+    normal: THREE.Vector3;
+    visible: boolean;
+    vertices: number[];
+  }> {
+    const indexAttribute = geometry.getIndex();
+    const normalAttribute = geometry.getAttribute('normal') as THREE.BufferAttribute;
+    const positionAttribute = geometry.getAttribute('position') as THREE.BufferAttribute;
+
+    if (!indexAttribute || !normalAttribute || !positionAttribute) {
+      console.warn('Geometry missing required attributes');
+      return [];
+    }
+
+    const facesArr: Array<{
+      normal: THREE.Vector3;
+      visible: boolean;
+      vertices: number[];
+    }> = [];
+
+    for (let faceIndex = 0; faceIndex < indexAttribute.count / 3; faceIndex++) {
+      const a = indexAttribute.getX(faceIndex * 3);
+      
+      // 从normalAttribute获取法向量并转换到世界坐标系
+      const faceNormal = new THREE.Vector3(
+        normalAttribute.getX(a),
+        normalAttribute.getY(a),
+        normalAttribute.getZ(a)
+      ).normalize();
+      
+      // get rotation matrix from meshGroup.matrixWorld
+      const rotationMatrix = new THREE.Matrix3().setFromMatrix4(meshGroup.matrixWorld);
+      const worldFaceNormal = faceNormal.clone().applyMatrix3(rotationMatrix).normalize();
+      
+      // 使用相机的LookAt方向（负的z轴方向）作为视线方向
+      const toCamera = new THREE.Vector3(0, 0, -1);
+      camera.getWorldDirection(toCamera);
+      
+      // 计算面的可见性
+      const isVisible = worldFaceNormal.dot(toCamera) < 0;
+
+      if (CustomEdgesGeometry.DEBUG_SHOW_NORMALS) {
+        console.log('meshGroup.matrixWorld: ', meshGroup.matrixWorld.elements);
+        console.log('faceIndex: ', faceIndex);
+        console.log('faceNormal: ', faceNormal);
+        console.log('worldFaceNormal: ', worldFaceNormal);  
+        console.log('toCamera: ', toCamera);
+        console.log('isVisible: ', isVisible);
+      }
+      
+      // 计算面的中心点
+      const center = new THREE.Vector3();
+      for (let i = 0; i < 3; i++) {
+        const vertexIndex = indexAttribute.getX(faceIndex * 3 + i);
+        center.add(new THREE.Vector3(
+          positionAttribute.getX(vertexIndex),
+          positionAttribute.getY(vertexIndex),
+          positionAttribute.getZ(vertexIndex)
+        ));
+      }
+      center.divideScalar(3);
+
+      // 创建法向量线
+      if (CustomEdgesGeometry.DEBUG_SHOW_NORMALS && normalLinesGroup) {
+        const normalLine = new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints([
+            center,
+            center.clone().add(faceNormal.multiplyScalar(0.5))
+          ]),
+          new THREE.LineBasicMaterial({
+            color: this.getNormalColor(faceNormal.normalize()),
+            linewidth: 2
+          })
+        );
+        normalLinesGroup.add(normalLine);
+      }
+      
+      facesArr.push({
+        normal: faceNormal,
+        visible: isVisible,
+        vertices: [a, a + 1, a + 2]
+      });
+    }
+
+    return facesArr;
+  }
+
   // 根据法向量方向返回对应的颜色
   public getNormalColor(normal: THREE.Vector3): number {
     const x = Math.abs(normal.x);
     const y = Math.abs(normal.y);
     const z = Math.abs(normal.z);
-    
-    console.log('Normal components:', {
-      x: x.toFixed(3),
-      y: y.toFixed(3),
-      z: z.toFixed(3)
-    });
     
     // 如果法向量与某个轴平行（允许一定的误差）
     if (x > 0.95) return 0xff0000; // 红色 - X轴
@@ -253,7 +258,6 @@ class CustomEdgesGeometry extends THREE.EdgesGeometry {
     
     return 0xffffff; // 白色 - 其他方向
   }
-
 }
 
 interface ThreeCanvasProps {
@@ -1006,15 +1010,7 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
         // 计算线段距离
         dashedLineSegments.computeLineDistances();
         
-        // 添加调试信息
-        console.log('Dashed line details:', {
-          vertexCount: edges.dashedEdges.count,
-          positionArray: Array.from(edges.dashedEdges.array),
-          lineDistanceArray: Array.from(dashedLineSegments.geometry.attributes.lineDistance?.array || [])
-        });
-        
         meshGroup.add(dashedLineSegments);
-        
         
         // 调试开关
         const DEBUG_SHOW_FACES = false;
@@ -1028,8 +1024,12 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
 
         // 添加顶点颜色属性
         const colors = new Float32Array(geometry.attributes.position.count * 3);
-        const faces = new CustomEdgesGeometry(geometry);
-        faces.faces.forEach((face, index) => {
+        const faces = edges.calculateFacesVisibility(
+          geometry,
+          cameraRef.current!,
+          meshGroup as THREE.Group
+        );
+        faces.forEach((face, index) => {
           const color = face.visible ? [0, 1, 0] : [1, 0, 0]; // 绿色表示可见，红色表示不可见
           for (let i = 0; i < 3; i++) {
             const vertexIndex = face.vertices[i];
@@ -1040,71 +1040,6 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
         });
         solidMesh.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
         meshGroup.add(solidMesh);
-        
-        // 创建法向量可视化组
-        const normalLinesGroup = new THREE.Group();
-        if (CustomEdgesGeometry.DEBUG_SHOW_NORMALS) {  // 使用类静态属性
-          meshGroup.add(normalLinesGroup);
-        }
-
-        // 存储每个面的可见性和法线
-        const facesArr: Array<{
-          normal: THREE.Vector3;
-          visible: boolean;
-          vertices: number[];
-        }> = [];
-        if (geometry.getIndex() && geometry.getAttribute('normal') && geometry.getAttribute('position') && geometry.userData.camera && geometry.userData.meshGroup) {
-          for (let faceIndex = 0; faceIndex < geometry.getIndex()!.count / 3; faceIndex++) {
-            const a = geometry.getIndex()!.getX(faceIndex * 3);
-            const faceNormal = new THREE.Vector3(
-              geometry.getAttribute('normal')!.getX(a),
-              geometry.getAttribute('normal')!.getY(a),
-              geometry.getAttribute('normal')!.getZ(a)
-            ).normalize();
-            const rotationMatrix = new THREE.Matrix3().setFromMatrix4(geometry.userData.meshGroup.matrixWorld);
-            const worldFaceNormal = faceNormal.clone().applyMatrix3(rotationMatrix).normalize();
-            const toCamera = new THREE.Vector3(0, 0, -1);
-            geometry.userData.camera.getWorldDirection(toCamera);
-            const isVisible = worldFaceNormal.dot(toCamera) < 0;
-            if (CustomEdgesGeometry.DEBUG_SHOW_NORMALS) {
-              console.log('meshGroup.matrixWorld: ', geometry.userData.meshGroup.matrixWorld.elements);
-              console.log('faceIndex: ', faceIndex);
-              console.log('faceNormal: ', faceNormal);
-              console.log('worldFaceNormal: ', worldFaceNormal);
-              console.log('toCamera: ', toCamera);
-              console.log('isVisible: ', isVisible);
-            }
-            const center = new THREE.Vector3();
-            for (let i = 0; i < 3; i++) {
-              const vertexIndex = geometry.getIndex()!.getX(faceIndex * 3 + i);
-              center.add(new THREE.Vector3(
-                geometry.getAttribute('position')!.getX(vertexIndex),
-                geometry.getAttribute('position')!.getY(vertexIndex),
-                geometry.getAttribute('position')!.getZ(vertexIndex)
-              ));
-            }
-            center.divideScalar(3);
-            if (CustomEdgesGeometry.DEBUG_SHOW_NORMALS) {
-              const normalLine = new THREE.Line(
-                new THREE.BufferGeometry().setFromPoints([
-                  center,
-                  center.clone().add(faceNormal.clone().multiplyScalar(0.5))
-                ]),
-                new THREE.LineBasicMaterial({
-                  color: edges.getNormalColor(faceNormal.clone().normalize()),
-                  linewidth: 2
-                })
-              );
-              normalLinesGroup.add(normalLine);
-            }
-            facesArr.push({
-              normal: faceNormal,
-              visible: isVisible,
-              vertices: [a, a + 1, a + 2]
-            });
-          }
-        }
-        edges.faces = facesArr;
         
         scene.add(meshGroup);
         meshes.set(shape.id, meshGroup);
@@ -1151,13 +1086,26 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
             solidMesh.geometry.userData.camera.updateMatrix();
             solidMesh.geometry.userData.camera.updateMatrixWorld(true);
 
-            // 重新获取属性
-            const geometry = solidMesh.geometry;
-            const indexAttribute = geometry.getIndex();
-            const normalAttribute = geometry.getAttribute('normal') as THREE.BufferAttribute;
-            const positionAttribute = geometry.getAttribute('position') as THREE.BufferAttribute;
-            const camera = geometry.userData.camera as THREE.Camera;
-            const meshGroupLocal = geometry.userData.meshGroup as THREE.Group;
+            // 重新创建边缘几何体
+            const edges = new CustomEdgesGeometry(solidMesh.geometry);
+
+            // 更新面的颜色
+            const colors = new Float32Array(solidMesh.geometry.attributes.position.count * 3);
+            const faces = edges.calculateFacesVisibility(
+              solidMesh.geometry,
+              cameraRef.current!,
+              meshGroup as THREE.Group
+            );
+            faces.forEach((face, index) => {
+              const color = face.visible ? [0, 1, 0] : [1, 0, 0]; // 绿色表示可见，红色表示不可见
+              for (let i = 0; i < 3; i++) {
+                const vertexIndex = face.vertices[i];
+                colors[vertexIndex * 3] = color[0];
+                colors[vertexIndex * 3 + 1] = color[1];
+                colors[vertexIndex * 3 + 2] = color[2];
+              }
+            });
+            solidMesh.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
             // 删除旧的边缘线段和法向量线
             const group = meshGroup as THREE.Group;
@@ -1175,70 +1123,6 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
               }
             });
 
-            // 重新创建边缘几何体
-            const edges = new CustomEdgesGeometry(solidMesh.geometry);
-
-            // 更新面的颜色
-            const colors = new Float32Array(solidMesh.geometry.attributes.position.count * 3);
-            // faces 计算部分
-            const facesArr: Array<{
-              normal: THREE.Vector3;
-              visible: boolean;
-              vertices: number[];
-            }> = [];
-            if (indexAttribute && normalAttribute && positionAttribute && camera && meshGroupLocal) {
-              for (let faceIndex = 0; faceIndex < indexAttribute.count / 3; faceIndex++) {
-                const a = indexAttribute.getX(faceIndex * 3);
-                const faceNormal = new THREE.Vector3(
-                  normalAttribute.getX(a),
-                  normalAttribute.getY(a),
-                  normalAttribute.getZ(a)
-                ).normalize();
-                const rotationMatrix = new THREE.Matrix3().setFromMatrix4(meshGroupLocal.matrixWorld);
-                const worldFaceNormal = faceNormal.clone().applyMatrix3(rotationMatrix).normalize();
-                const toCamera = new THREE.Vector3(0, 0, -1);
-                camera.getWorldDirection(toCamera);
-                const isVisible = worldFaceNormal.dot(toCamera) < 0;
-                if (CustomEdgesGeometry.DEBUG_SHOW_NORMALS) {
-                  console.log('meshGroup.matrixWorld: ', meshGroupLocal.matrixWorld.elements);
-                  console.log('faceIndex: ', faceIndex);
-                  console.log('faceNormal: ', faceNormal);
-                  console.log('worldFaceNormal: ', worldFaceNormal);
-                  console.log('toCamera: ', toCamera);
-                  console.log('isVisible: ', isVisible);
-                }
-                const center = new THREE.Vector3();
-                for (let i = 0; i < 3; i++) {
-                  const vertexIndex = indexAttribute.getX(faceIndex * 3 + i);
-                  center.add(new THREE.Vector3(
-                    positionAttribute.getX(vertexIndex),
-                    positionAttribute.getY(vertexIndex),
-                    positionAttribute.getZ(vertexIndex)
-                  ));
-                }
-                center.divideScalar(3);
-                if (CustomEdgesGeometry.DEBUG_SHOW_NORMALS) {
-                  const normalLine = new THREE.Line(
-                    new THREE.BufferGeometry().setFromPoints([
-                      center,
-                      center.clone().add(faceNormal.clone().multiplyScalar(0.5))
-                    ]),
-                    new THREE.LineBasicMaterial({
-                      color: edges.getNormalColor(faceNormal.clone().normalize()),
-                      linewidth: 2
-                    })
-                  );
-                  group.add(normalLine);
-                }
-                facesArr.push({
-                  normal: faceNormal,
-                  visible: isVisible,
-                  vertices: [a, a + 1, a + 2]
-                });
-              }
-            }
-            edges.faces = facesArr;
-            
             // 创建实线边缘
             const solidLineMaterial = new THREE.LineBasicMaterial({ 
               color: shape.color,
@@ -1262,13 +1146,6 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
             
             // 计算线段距离
             dashedLineSegments.computeLineDistances();
-            
-            // 添加调试信息
-            console.log('Dashed line details:', {
-              vertexCount: edges.dashedEdges.count,
-              positionArray: Array.from(edges.dashedEdges.array),
-              lineDistanceArray: Array.from(dashedLineSegments.geometry.attributes.lineDistance?.array || [])
-            });
             
             meshGroup.add(dashedLineSegments);
           }
