@@ -7,11 +7,12 @@ import { geometryStore, GeometryShape } from '../stores/GeometryStore';
 function createEdgeSegments(
   edges: CustomEdgesGeometry,
   shapeColor: string,
-  meshGroup: THREE.Group
+  meshGroup: THREE.Group,
+  isSelected: boolean = false
 ): { solidLineSegments: THREE.LineSegments; dashedLineSegments: THREE.LineSegments } {
   // 创建实线边缘
   const solidLineMaterial = new THREE.LineBasicMaterial({ 
-    color: shapeColor,
+    color: isSelected ? 0xff6b35 : shapeColor,  // 选中时使用深橙色
     linewidth: 1
   });
   const solidLineGeometry = new THREE.BufferGeometry();
@@ -21,7 +22,7 @@ function createEdgeSegments(
 
   // 创建虚线边缘
   const dashedLineMaterial = new THREE.LineDashedMaterial({ 
-    color: 0x00aaff,  // 比 #0078d4 更浅的蓝色
+    color: isSelected ? 0xffb380 : 0x00aaff,  // 选中时使用浅橙色，否则使用浅蓝色
     dashSize: 0.02,   // 虚线大小
     gapSize: 0.008,   // 间隔大小
     linewidth: 0.5    // 线宽
@@ -998,6 +999,9 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     const scene = sceneRef.current;
     const meshes = meshesRef.current;
 
+    // 调试开关
+    const DEBUG_SHOW_FACES_VISIBILITY_BY_COLOR = false;
+
     // 1. 删除不再存在的对象
     meshes.forEach((meshGroup, id) => {
       if (!geometryStore.shapes.find(shape => shape.id === id)) {
@@ -1022,10 +1026,6 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     });
 
     // 2. 更新或创建对象
-    //
-    // 调试开关
-    const DEBUG_SHOW_FACES_VISIBILITY_BY_COLOR = false;
-    
     geometryStore.shapes.forEach(shape => {
       let meshGroup = meshes.get(shape.id);
       let needsUpdate = shape.hasChanged;  // 使用 hasChanged 标记判断是否需要更新
@@ -1049,10 +1049,10 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
         
         const edges = new CustomEdgesGeometry(geometry);
         
-        // 使用工具函数创建边缘线段
-        createEdgeSegments(edges, shape.color, meshGroup as THREE.Group);
+        // 使用工具函数创建边缘线段，传入选中状态
+        const isSelected = geometryStore.selectedShapeId === shape.id;
+        createEdgeSegments(edges, shape.color, meshGroup as THREE.Group, isSelected);
         
-
         const solidMaterial = new THREE.MeshBasicMaterial({ 
           transparent: true,
           opacity: DEBUG_SHOW_FACES_VISIBILITY_BY_COLOR ? 0.3 : 0,  // 根据调试开关控制面的显示
@@ -1061,7 +1061,6 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
         });
         const solidMesh = new THREE.Mesh(geometry.clone(), solidMaterial);
 
-        
         if (DEBUG_SHOW_FACES_VISIBILITY_BY_COLOR) {
           // 使用工具函数更新面的颜色
           updateFaceColors(solidMesh.geometry, edges, cameraRef.current!, meshGroup as THREE.Group);
@@ -1137,19 +1136,48 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
               }
             });
 
-            // 使用工具函数创建边缘线段
-            createEdgeSegments(edges, shape.color, meshGroup as THREE.Group);
+            // 使用工具函数创建边缘线段，传入选中状态
+            const isSelected = geometryStore.selectedShapeId === shape.id;
+            createEdgeSegments(edges, shape.color, meshGroup as THREE.Group, isSelected);
           }
         }
 
-        // 检查颜色是否变化
+        // 检查选中状态是否变化
         const lineSegments = currentMesh.children.find(child => child instanceof THREE.LineSegments);
-        if (lineSegments instanceof THREE.LineSegments && lineSegments.material instanceof THREE.LineBasicMaterial) {
+        if (lineSegments instanceof THREE.LineSegments) {
           const isSelected = geometryStore.selectedShapeId === shape.id;
-          const newColor = isSelected ? '#ff6b35' : shape.color;
-          if (lineSegments.material.color.getHexString() !== newColor.replace('#', '')) {
+          const currentColor = lineSegments.material instanceof THREE.LineBasicMaterial ? 
+            lineSegments.material.color.getHex() : 0;
+          const expectedColor = isSelected ? 0xff6b35 : parseInt(shape.color.replace('#', ''), 16);
+          
+          if (currentColor !== expectedColor) {
             needsUpdate = true;
             needsUpdateRef.current = true;
+
+            // 重新创建边缘几何体
+            const solidMesh = currentMesh.children.find(child => child instanceof THREE.Mesh) as THREE.Mesh;
+            if (solidMesh && solidMesh.geometry) {
+              const edges = new CustomEdgesGeometry(solidMesh.geometry);
+
+              // 删除旧的边缘线段
+              const group = meshGroup as THREE.Group;
+              group.children.forEach(child => {
+                if (child instanceof THREE.LineSegments || child instanceof THREE.Line) {
+                  if (child.geometry) child.geometry.dispose();
+                  if (child.material) {
+                    if (Array.isArray(child.material)) {
+                      child.material.forEach(material => material.dispose());
+                    } else {
+                      child.material.dispose();
+                    }
+                  }
+                  group.remove(child);
+                }
+              });
+
+              // 使用工具函数创建边缘线段，传入选中状态
+              createEdgeSegments(edges, shape.color, meshGroup as THREE.Group, isSelected);
+            }
           }
         }
       }
