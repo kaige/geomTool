@@ -15,7 +15,8 @@ export const CustomIcon: React.FC<CustomIconProps> = ({
 
   useEffect(() => {
     // 获取SVG内容并注入到页面中
-    fetch(`/svg/${name}.svg`)
+    const basePath = process.env.NODE_ENV === 'production' ? process.env.PUBLIC_URL : '';
+    fetch(`${basePath}/svg/${name}.svg`)
       .then(response => response.text())
       .then(svg => {
         // 修改SVG的width和height属性以匹配指定的size

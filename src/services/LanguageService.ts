@@ -1,3 +1,5 @@
+import i18n from '../i18n';
+
 export type Language = 'zh' | 'en';
 
 export interface Translations {
@@ -56,6 +58,9 @@ class LanguageService {
     localStorage.setItem('app-language', language);
   }
 
+  // 根据环境设置基础路径
+  private basePath = process.env.NODE_ENV === 'production' ? '/geomTool/locales' : '/locales';
+
   // 加载指定语言的翻译文件
   async loadTranslations(language: Language): Promise<Translations> {
     // 如果已经加载过，直接返回
@@ -64,7 +69,7 @@ class LanguageService {
     }
 
     try {
-      const response = await fetch(`/locales/${language}.json`);
+      const response = await fetch(`${this.basePath}/${language}.json`);
       if (!response.ok) {
         throw new Error(`Failed to load ${language} translations`);
       }

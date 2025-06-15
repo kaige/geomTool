@@ -3,28 +3,35 @@
   "version": "1.0.0",
   "description": "一个使用React、Fluent UI、Three.js和MobX的几何图形绘制工具",
   "private": true,
+  "homepage": "https://kaige.github.io/geomTool",
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build",
+    "build": "react-scripts build && npm run copy-assets",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "clean": "rmdir /s /q build 2>nul || echo \"构建目录已清空或不存在\""
+    "clean": "rmdir /s /q build 2>nul || echo \"构建目录已清空或不存在\"",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d build",
+    "copy-assets": "copyfiles -u 1 \"public/svg/**/*\" \"public/locales/**/*\" build"
   },
   "dependencies": {
     "@fluentui/react": "^8.114.0",
     "@fluentui/react-components": "^9.47.0",
     "@fluentui/react-icons": "^2.0.220",
+    "@types/node": "^16.18.60",
+    "@types/react": "^18.2.37",
+    "@types/react-dom": "^18.2.15",
+    "@types/three": "^0.157.0",
+    "i18next": "^23.7.16",
+    "i18next-browser-languagedetector": "^7.2.0",
     "mobx": "^6.10.2",
     "mobx-react": "^9.1.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-i18next": "^13.5.0",
     "react-scripts": "5.0.1",
     "three": "^0.157.0",
-    "@types/three": "^0.157.0",
-    "typescript": "^4.9.5",
-    "@types/node": "^16.18.60",
-    "@types/react": "^18.2.37",
-    "@types/react-dom": "^18.2.15"
+    "typescript": "^4.9.5"
   },
   "eslintConfig": {
     "extends": [
@@ -43,5 +50,11 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "@types/i18next": "^12.1.0",
+    "@types/react-i18next": "^7.8.3",
+    "copyfiles": "^2.4.1",
+    "gh-pages": "^6.3.0"
   }
-} 
+}

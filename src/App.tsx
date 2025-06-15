@@ -12,6 +12,7 @@ import { ThreeCanvas } from './components/ThreeCanvas';
 import { ShapeList } from './components/ShapeList';
 import { StatusBar } from './components/StatusBar';
 import { geometryStore } from './stores/GeometryStore';
+import './i18n';
 import './App.css';
 
 // 初始化图标
