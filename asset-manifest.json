@@ -1,0 +1,13 @@
+{
+  "files": {
+    "main.css": "/geomTool/static/css/main.80ebcd83.css",
+    "main.js": "/geomTool/static/js/main.5ad4c2c3.js",
+    "index.html": "/geomTool/index.html",
+    "main.80ebcd83.css.map": "/geomTool/static/css/main.80ebcd83.css.map",
+    "main.5ad4c2c3.js.map": "/geomTool/static/js/main.5ad4c2c3.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.80ebcd83.css",
+    "static/js/main.5ad4c2c3.js"
+  ]
+}
