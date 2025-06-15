@@ -4,19 +4,11 @@
     <meta charset="utf-8">
     <title>Geometry Tool</title>
     <script type="text/javascript">
-      // 获取当前路径
-      var pathSegmentsToKeep = 1; // 保留的路径段数
-
-      var l = window.location;
-      l.replace(
-        l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
-        l.pathname.split('/').slice(0, 1 + pathSegmentsToKeep).join('/') + '/?/' +
-        l.pathname.slice(1).split('/').slice(pathSegmentsToKeep).join('/').replace(/&/g, '~and~') +
-        (l.search ? '&' + l.search.slice(1).replace(/&/g, '~and~') : '') +
-        l.hash
-      );
+      // 重定向到主页
+      window.location.href = '/geomTool/';
     </script>
   </head>
   <body>
+    <p>正在重定向到主页...</p>
   </body>
 </html> 
