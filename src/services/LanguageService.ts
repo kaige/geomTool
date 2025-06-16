@@ -59,7 +59,7 @@ class LanguageService {
   }
 
   // 根据环境设置基础路径
-  private basePath = process.env.NODE_ENV === 'production' ? '/geomTool/locales' : '/locales';
+  private basePath = `${process.env.PUBLIC_URL || ''}/locales`;
 
   // 加载指定语言的翻译文件
   async loadTranslations(language: Language): Promise<Translations> {
