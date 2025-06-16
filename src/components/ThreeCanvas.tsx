@@ -1069,28 +1069,21 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
         meshGroup.add(solidMesh);
         scene.add(meshGroup);
         meshes.set(shape.id, meshGroup);
-        needsUpdate = true;
-        needsUpdateRef.current = true;
-      } else if (needsUpdate) {
-        // 检查是否需要更新
+      } else {
         const currentMesh = meshGroup as THREE.Group;
-        const currentPosition = currentMesh.position;
-        const currentRotation = currentMesh.rotation;
-        const currentScale = currentMesh.scale;
-        const currentVisible = currentMesh.visible;
         
-        // 检查位置、旋转、缩放、可见性是否变化
+        // 检查位置、旋转、缩放或可见性是否变化
         if (
-          currentPosition.x !== shape.position.x ||
-          currentPosition.y !== shape.position.y ||
-          currentPosition.z !== shape.position.z ||
-          currentRotation.x !== shape.rotation.x ||
-          currentRotation.y !== shape.rotation.y ||
-          currentRotation.z !== shape.rotation.z ||
-          currentScale.x !== shape.scale.x ||
-          currentScale.y !== shape.scale.y ||
-          currentScale.z !== shape.scale.z ||
-          currentVisible !== shape.visible
+          currentMesh.position.x !== shape.position.x ||
+          currentMesh.position.y !== shape.position.y ||
+          currentMesh.position.z !== shape.position.z ||
+          currentMesh.rotation.x !== shape.rotation.x ||
+          currentMesh.rotation.y !== shape.rotation.y ||
+          currentMesh.rotation.z !== shape.rotation.z ||
+          currentMesh.scale.x !== shape.scale.x ||
+          currentMesh.scale.y !== shape.scale.y ||
+          currentMesh.scale.z !== shape.scale.z ||
+          currentMesh.visible !== shape.visible
         ) {
           needsUpdate = true;
           needsUpdateRef.current = true;
@@ -1143,14 +1136,14 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
         }
 
         // 检查选中状态是否变化
+        const isSelected = geometryStore.selectedShapeId === shape.id;
         const lineSegments = currentMesh.children.find(child => child instanceof THREE.LineSegments);
         if (lineSegments instanceof THREE.LineSegments) {
-          const isSelected = geometryStore.selectedShapeId === shape.id;
           const currentColor = lineSegments.material instanceof THREE.LineBasicMaterial ? 
             lineSegments.material.color.getHex() : 0;
           const expectedColor = isSelected ? 0xff6b35 : parseInt(shape.color.replace('#', ''), 16);
           
-          if (currentColor !== expectedColor) {
+          if (currentColor !== expectedColor || shape.hasChanged) {
             needsUpdate = true;
             needsUpdateRef.current = true;
 
@@ -1180,6 +1173,11 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
             }
           }
         }
+      }
+
+      // 清除变化标记
+      if (shape.hasChanged) {
+        shape.hasChanged = false;
       }
     });
 
