@@ -9,6 +9,7 @@ export interface GeometryShape {
   color: string;
   visible: boolean;
   hasChanged?: boolean;  // 添加变化标记
+  hasSelectionChanged?: boolean;  // 添加选中状态变化标记
 }
 
 export class GeometryStore {
@@ -60,7 +61,7 @@ export class GeometryStore {
     if (this.selectedShapeId) {
       const oldSelectedShape = this.shapes.find(shape => shape.id === this.selectedShapeId);
       if (oldSelectedShape) {
-        oldSelectedShape.hasChanged = true;
+        oldSelectedShape.hasSelectionChanged = true;
       }
     }
     
@@ -68,7 +69,7 @@ export class GeometryStore {
     if (id) {
       const newSelectedShape = this.shapes.find(shape => shape.id === id);
       if (newSelectedShape) {
-        newSelectedShape.hasChanged = true;
+        newSelectedShape.hasSelectionChanged = true;
       }
     }
     

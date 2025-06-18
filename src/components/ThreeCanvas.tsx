@@ -3,6 +3,9 @@ import { observer } from 'mobx-react';
 import * as THREE from 'three';
 import { geometryStore, GeometryShape } from '../stores/GeometryStore';
 
+// 调试开关
+const DEBUG_SHOW_FACES_VISIBILITY_BY_COLOR = false;
+
 // 创建边缘线段的工具函数
 function createEdgeSegments(
   edges: CustomEdgesGeometry,
@@ -61,6 +64,42 @@ function updateFaceColors(
     }
   });
   geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+}
+
+// 检查形状的变换或可见性是否变化的工具函数
+function isTransformOrVisibilityChanged(currentMesh: THREE.Group<THREE.Object3DEventMap>, shape: GeometryShape) {
+  return currentMesh.position.x !== shape.position.x ||
+    currentMesh.position.y !== shape.position.y ||
+    currentMesh.position.z !== shape.position.z ||
+    currentMesh.rotation.x !== shape.rotation.x ||
+    currentMesh.rotation.y !== shape.rotation.y ||
+    currentMesh.rotation.z !== shape.rotation.z ||
+    currentMesh.scale.x !== shape.scale.x ||
+    currentMesh.scale.y !== shape.scale.y ||
+    currentMesh.scale.z !== shape.scale.z ||
+    currentMesh.visible !== shape.visible;
+}
+
+function updateShapeEdgesGeometry(meshGroup: THREE.Object3D<THREE.Object3DEventMap> | undefined, solidMeshGeometry: THREE.BufferGeometry<THREE.NormalBufferAttributes>, shape: GeometryShape) {
+  const group = meshGroup as THREE.Group;
+  group.children.forEach(child => {
+    if (child instanceof THREE.LineSegments || child instanceof THREE.Line) {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach(material => material.dispose());
+        } else {
+          child.material.dispose();
+        }
+      }
+      group.remove(child);
+    }
+  });
+
+  const edges = new CustomEdgesGeometry(solidMeshGeometry);
+  createEdgeSegments(edges, shape.color, meshGroup as THREE.Group, geometryStore.selectedShapeId === shape.id);
+
+  return edges;
 }
 
 // 自定义的 EdgesGeometry，根据面的可见性和夹角决定边的显示
@@ -999,9 +1038,6 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     const scene = sceneRef.current;
     const meshes = meshesRef.current;
 
-    // 调试开关
-    const DEBUG_SHOW_FACES_VISIBILITY_BY_COLOR = false;
-
     // 1. 删除不再存在的对象
     meshes.forEach((meshGroup, id) => {
       if (!geometryStore.shapes.find(shape => shape.id === id)) {
@@ -1071,105 +1107,40 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
         meshes.set(shape.id, meshGroup);
       } else {
         const currentMesh = meshGroup as THREE.Group;
+        const isXformOrVisbilityChanged = isTransformOrVisibilityChanged(currentMesh, shape);
         
         // 检查位置、旋转、缩放或可见性是否变化
-        if (
-          currentMesh.position.x !== shape.position.x ||
-          currentMesh.position.y !== shape.position.y ||
-          currentMesh.position.z !== shape.position.z ||
-          currentMesh.rotation.x !== shape.rotation.x ||
-          currentMesh.rotation.y !== shape.rotation.y ||
-          currentMesh.rotation.z !== shape.rotation.z ||
-          currentMesh.scale.x !== shape.scale.x ||
-          currentMesh.scale.y !== shape.scale.y ||
-          currentMesh.scale.z !== shape.scale.z ||
-          currentMesh.visible !== shape.visible
-        ) {
+        if ( isXformOrVisbilityChanged || shape.hasSelectionChanged || shape.hasChanged) {
           needsUpdate = true;
           needsUpdateRef.current = true;
 
-          // 更新meshGroup的变换
-          meshGroup.position.set(shape.position.x, shape.position.y, shape.position.z);
-          meshGroup.rotation.set(shape.rotation.x, shape.rotation.y, shape.rotation.z);
-          meshGroup.scale.set(shape.scale.x, shape.scale.y, shape.scale.z);
-          meshGroup.visible = shape.visible;
-          meshGroup.updateMatrix();
-          meshGroup.updateMatrixWorld(true);
+          if (isXformOrVisbilityChanged) {
+            // 更新meshGroup的变换
+            meshGroup.position.set(shape.position.x, shape.position.y, shape.position.z);
+            meshGroup.rotation.set(shape.rotation.x, shape.rotation.y, shape.rotation.z);
+            meshGroup.scale.set(shape.scale.x, shape.scale.y, shape.scale.z);
+            meshGroup.visible = shape.visible;
+            meshGroup.updateMatrix();
+            meshGroup.updateMatrixWorld(true);
+          }
 
           // 重新计算边缘
           const solidMesh = currentMesh.children.find(child => child instanceof THREE.Mesh) as THREE.Mesh;
           if (solidMesh && solidMesh.geometry) {
-            // 更新相机信息
-            solidMesh.geometry.userData.camera = cameraRef.current;
-            solidMesh.geometry.userData.meshGroup = meshGroup;
-            solidMesh.geometry.userData.camera.updateMatrix();
-            solidMesh.geometry.userData.camera.updateMatrixWorld(true);
 
-            // 重新创建边缘几何体
-            const edges = new CustomEdgesGeometry(solidMesh.geometry);
+            if (isXformOrVisbilityChanged){
+              // 更新相机信息
+              solidMesh.geometry.userData.camera = cameraRef.current;
+              solidMesh.geometry.userData.meshGroup = meshGroup;
+              solidMesh.geometry.userData.camera.updateMatrix();
+              solidMesh.geometry.userData.camera.updateMatrixWorld(true);
+            }
+            // 更新边缘几何体
+            const newEdges = updateShapeEdgesGeometry(meshGroup, solidMesh.geometry, shape);
 
             if (DEBUG_SHOW_FACES_VISIBILITY_BY_COLOR) {
               // 使用工具函数更新面的颜色
-              updateFaceColors(solidMesh.geometry, edges, cameraRef.current!, meshGroup as THREE.Group);
-            }
-
-            // 删除旧的边缘线段和法向量线
-            const group = meshGroup as THREE.Group;
-            group.children.forEach(child => {
-              if (child instanceof THREE.LineSegments || child instanceof THREE.Line) {
-                if (child.geometry) child.geometry.dispose();
-                if (child.material) {
-                  if (Array.isArray(child.material)) {
-                    child.material.forEach(material => material.dispose());
-                  } else {
-                    child.material.dispose();
-                  }
-                }
-                group.remove(child);
-              }
-            });
-
-            // 使用工具函数创建边缘线段，传入选中状态
-            const isSelected = geometryStore.selectedShapeId === shape.id;
-            createEdgeSegments(edges, shape.color, meshGroup as THREE.Group, isSelected);
-          }
-        }
-
-        // 检查选中状态是否变化
-        const isSelected = geometryStore.selectedShapeId === shape.id;
-        const lineSegments = currentMesh.children.find(child => child instanceof THREE.LineSegments);
-        if (lineSegments instanceof THREE.LineSegments) {
-          const currentColor = lineSegments.material instanceof THREE.LineBasicMaterial ? 
-            lineSegments.material.color.getHex() : 0;
-          const expectedColor = isSelected ? 0xff6b35 : parseInt(shape.color.replace('#', ''), 16);
-          
-          if (currentColor !== expectedColor || shape.hasChanged) {
-            needsUpdate = true;
-            needsUpdateRef.current = true;
-
-            // 重新创建边缘几何体
-            const solidMesh = currentMesh.children.find(child => child instanceof THREE.Mesh) as THREE.Mesh;
-            if (solidMesh && solidMesh.geometry) {
-              const edges = new CustomEdgesGeometry(solidMesh.geometry);
-
-              // 删除旧的边缘线段
-              const group = meshGroup as THREE.Group;
-              group.children.forEach(child => {
-                if (child instanceof THREE.LineSegments || child instanceof THREE.Line) {
-                  if (child.geometry) child.geometry.dispose();
-                  if (child.material) {
-                    if (Array.isArray(child.material)) {
-                      child.material.forEach(material => material.dispose());
-                    } else {
-                      child.material.dispose();
-                    }
-                  }
-                  group.remove(child);
-                }
-              });
-
-              // 使用工具函数创建边缘线段，传入选中状态
-              createEdgeSegments(edges, shape.color, meshGroup as THREE.Group, isSelected);
+              updateFaceColors(solidMesh.geometry, newEdges, cameraRef.current!, meshGroup as THREE.Group);
             }
           }
         }
@@ -1179,6 +1150,7 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       if (shape.hasChanged) {
         shape.hasChanged = false;
       }
+
     });
 
     isUpdatingRef.current = false;
@@ -1198,3 +1170,5 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
 
   return <div ref={mountRef} style={{ width, height }} />;
 }); 
+
+
