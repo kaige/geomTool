@@ -5,6 +5,25 @@ import { geometryStore, GeometryShape } from '../stores/GeometryStore';
 
 // 调试开关
 const DEBUG_SHOW_FACES_VISIBILITY_BY_COLOR = false;
+const DEBUG_SHOW_NORMALS = false;
+
+// 创建几何体
+const createGeometry = (type: GeometryShape['type']): THREE.BufferGeometry => {
+  switch (type) {
+    case 'sphere':
+      return new THREE.SphereGeometry(1, 32, 32);
+    case 'cube':
+      return new THREE.BoxGeometry(1, 1, 1);
+    case 'cylinder':
+      return new THREE.CylinderGeometry(1, 1, 2, 32);
+    case 'cone':
+      return new THREE.ConeGeometry(1, 2, 32);
+    case 'torus':
+      return new THREE.TorusGeometry(1, 0.4, 16, 100);
+    default:
+      return new THREE.BoxGeometry(1, 1, 1);
+  }
+};
 
 // 创建边缘线段的工具函数
 function createEdgeSegments(
@@ -104,7 +123,6 @@ function updateShapeEdgesGeometry(meshGroup: THREE.Object3D<THREE.Object3DEventM
 
 // 自定义的 EdgesGeometry，根据面的可见性和夹角决定边的显示
 class CustomEdgesGeometry extends THREE.EdgesGeometry {
-  public static DEBUG_SHOW_NORMALS = false;  // 改为公共静态属性
   public solidEdges: THREE.BufferAttribute;
   public dashedEdges: THREE.BufferAttribute;
   public faces: Array<{
@@ -136,7 +154,7 @@ class CustomEdgesGeometry extends THREE.EdgesGeometry {
 
     // 创建法向量可视化组
     const normalLinesGroup = new THREE.Group();
-    if (CustomEdgesGeometry.DEBUG_SHOW_NORMALS) {
+    if (DEBUG_SHOW_NORMALS) {
       meshGroup.add(normalLinesGroup);
     }
 
@@ -292,15 +310,6 @@ class CustomEdgesGeometry extends THREE.EdgesGeometry {
       
       // 计算面的可见性
       const isVisible = worldFaceNormal.dot(toCamera) < 0;
-
-      if (CustomEdgesGeometry.DEBUG_SHOW_NORMALS) {
-        console.log('meshGroup.matrixWorld: ', meshGroup.matrixWorld.elements);
-        console.log('faceIndex: ', faceIndex);
-        console.log('faceNormal: ', faceNormal);
-        console.log('worldFaceNormal: ', worldFaceNormal);  
-        console.log('toCamera: ', toCamera);
-        console.log('isVisible: ', isVisible);
-      }
       
       // 计算面的中心点
       const center = new THREE.Vector3();
@@ -315,7 +324,7 @@ class CustomEdgesGeometry extends THREE.EdgesGeometry {
       center.divideScalar(3);
 
       // 创建法向量线
-      if (CustomEdgesGeometry.DEBUG_SHOW_NORMALS && normalLinesGroup) {
+      if (DEBUG_SHOW_NORMALS && normalLinesGroup) {
         const normalLine = new THREE.Line(
           new THREE.BufferGeometry().setFromPoints([
             center,
@@ -751,7 +760,7 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
             rotationDelta = totalMouseDeltaX;
             break;
           case 'z':
-            rotationDelta = totalMouseDeltaX;
+            rotationDelta = -totalMouseDeltaX;
             break;
           default:
             rotationDelta = 0;
@@ -879,21 +888,10 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
 
       const intersects = raycaster.intersectObjects(intersectableObjects, false);
 
-      console.log('射线检测结果:', intersects.length, '个交点');
-      intersects.forEach((intersect, index) => {
-        console.log(`交点 ${index}:`, {
-          distance: intersect.distance,
-          object: intersect.object,
-          point: intersect.point
-        });
-      });
-
       if (intersects.length > 0) {
         const closestIntersect = intersects[0];
         const clickedMesh = closestIntersect.object;
         const clickedShapeId = idMap.get(clickedMesh);
-
-        console.log('选中的物体ID:', clickedShapeId);
 
         if (clickedShapeId) {
           geometryStore.selectShape(clickedShapeId);
@@ -904,9 +902,7 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
           }
         }
       } else {
-        console.log('没有检测到交点，取消选择');
         geometryStore.selectShape(null);
-        console.log('[取消选择] 没有选中任何物体');
       }
     };
 
@@ -964,6 +960,7 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     camera.updateMatrixWorld();
   };
 
+  // useEffect is called once when the component is mounted
   useEffect(() => {
     if (!mountRef.current) return;
 
@@ -1010,27 +1007,8 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     };
   }, [width, height]);
 
-  //////// all above are for useEffect, useEffect is called once when the component is mounted ////////
 
-  // 创建几何体
-  const createGeometry = (type: GeometryShape['type']): THREE.BufferGeometry => {
-    switch (type) {
-      case 'sphere':
-        return new THREE.SphereGeometry(1, 32, 32);
-      case 'cube':
-        return new THREE.BoxGeometry(1, 1, 1);
-      case 'cylinder':
-        return new THREE.CylinderGeometry(1, 1, 2, 32);
-      case 'cone':
-        return new THREE.ConeGeometry(1, 2, 32);
-      case 'torus':
-        return new THREE.TorusGeometry(1, 0.4, 16, 100);
-      default:
-        return new THREE.BoxGeometry(1, 1, 1);
-    }
-  };
-
-
+  // updateScene is called everytime the geometryStore is updated
   const updateScene = useCallback(() => {
     if (!sceneRef.current || isUpdatingRef.current) return;
 
@@ -1166,7 +1144,6 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
 
   // 直接调用updateScene，让MobX observer处理重新渲染
   updateScene();
-  //////// all above are for updateScene, updateScene is called everytime the geometryStore is updated ////////
 
   return <div ref={mountRef} style={{ width, height }} />;
 }); 
