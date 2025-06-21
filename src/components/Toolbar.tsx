@@ -6,14 +6,56 @@ import {
   Stack,
   CommandBarButton,
 } from '@fluentui/react';
-import { geometryStore, GeometryShape } from '../stores/GeometryStore';
+import { geometryStore } from '../stores/GeometryStore';
+import { GeometryShape } from '../types/GeometryTypes';
 import { languageStore } from '../stores/LanguageStore';
 import { LanguageSelector } from './LanguageSelector';
 import { CustomIcon } from './CustomIcon';
 
 export const Toolbar: React.FC = observer(() => {
   const addShape = (type: GeometryShape['type']) => {
-    geometryStore.addShape(type);
+    // 对于3D形状，使用原有的addShape方法
+    if (['sphere', 'cube', 'cylinder', 'cone', 'torus'].includes(type)) {
+      geometryStore.addShape(type as 'sphere' | 'cube' | 'cylinder' | 'cone' | 'torus');
+    }
+    // 对于平面形状，使用新的方法
+    else if (type === 'lineSegment') {
+      geometryStore.addLineSegment(
+        { x: -1, y: 0, z: 0 },
+        { x: 1, y: 0, z: 0 }
+      );
+    }
+    else if (type === 'rectangle') {
+      geometryStore.addRectangle([
+        { x: -0.5, y: -0.5, z: 0 },
+        { x: 0.5, y: -0.5, z: 0 },
+        { x: 0.5, y: 0.5, z: 0 },
+        { x: -0.5, y: 0.5, z: 0 }
+      ]);
+    }
+    else if (type === 'circle') {
+      geometryStore.addCircle({ x: 0, y: 0, z: 0 }, 1);
+    }
+    else if (type === 'triangle') {
+      geometryStore.addTriangle([
+        { x: 0, y: 0.5, z: 0 },
+        { x: -0.5, y: -0.5, z: 0 },
+        { x: 0.5, y: -0.5, z: 0 }
+      ]);
+    }
+    else if (type === 'polygon') {
+      // 创建一个正六边形
+      const positions = [];
+      for (let i = 0; i < 6; i++) {
+        const angle = (i * Math.PI * 2) / 6;
+        positions.push({
+          x: Math.cos(angle) * 0.5,
+          y: Math.sin(angle) * 0.5,
+          z: 0
+        });
+      }
+      geometryStore.addPolygon(positions);
+    }
   };
 
   const clearAll = () => {

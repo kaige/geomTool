@@ -1,7 +1,8 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { observer } from 'mobx-react';
 import * as THREE from 'three';
-import { geometryStore, GeometryShape } from '../stores/GeometryStore';
+import { geometryStore } from '../stores/GeometryStore';
+import { GeometryShape, GeometryShape3D, LineSegment, Rectangle, Circle, Triangle, Polygon } from '../types/GeometryTypes';
 
 // 调试开关
 const DEBUG_SHOW_FACES_VISIBILITY_BY_COLOR = false;
@@ -20,6 +21,31 @@ const createGeometry = (type: GeometryShape['type']): THREE.BufferGeometry => {
       return new THREE.ConeGeometry(1, 2, 32);
     case 'torus':
       return new THREE.TorusGeometry(1, 0.4, 16, 100);
+    case 'lineSegment':
+      // 线段几何体 - 简单的线段
+      const lineGeometry = new THREE.BufferGeometry();
+      const positions = new Float32Array([0, 0, 0, 1, 0, 0]); // 从原点到x轴1单位
+      lineGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      return lineGeometry;
+    case 'rectangle':
+      // 矩形几何体 - 平面矩形
+      return new THREE.PlaneGeometry(1, 1);
+    case 'circle':
+      // 圆形几何体 - 平面圆形
+      return new THREE.CircleGeometry(1, 32);
+    case 'triangle':
+      // 三角形几何体 - 平面三角形
+      const triangleGeometry = new THREE.BufferGeometry();
+      const trianglePositions = new Float32Array([
+        0, 0.5, 0,    // 顶点1
+        -0.5, -0.5, 0, // 顶点2
+        0.5, -0.5, 0   // 顶点3
+      ]);
+      triangleGeometry.setAttribute('position', new THREE.BufferAttribute(trianglePositions, 3));
+      return triangleGeometry;
+    case 'polygon':
+      // 多边形几何体 - 使用正六边形作为默认
+      return new THREE.CircleGeometry(1, 6);
     default:
       return new THREE.BoxGeometry(1, 1, 1);
   }
