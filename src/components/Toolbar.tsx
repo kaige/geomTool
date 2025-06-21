@@ -222,6 +222,12 @@ export const Toolbar: React.FC = observer(() => {
                   onClick={() => addShape('torus')}
                   styles={ribbonButtonStyle}
                 />
+                <CommandBarButton
+                  onRenderIcon={() => <CustomIcon name="line" size={36} />}
+                  text={languageStore.t.lineSegment || "线段"}
+                  onClick={() => addShape('lineSegment')}
+                  styles={ribbonButtonStyle}
+                />
               </Stack>
             </Stack>
           </div>

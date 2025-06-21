@@ -1087,26 +1087,37 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
         geometry.userData.camera.updateMatrix();
         geometry.userData.camera.updateMatrixWorld(true);
         
-        const edges = new CustomEdgesGeometry(geometry);
-        
-        // 使用工具函数创建边缘线段，传入选中状态
-        const isSelected = geometryStore.selectedShapeId === shape.id;
-        createEdgeSegments(edges, shape.color, meshGroup as THREE.Group, isSelected);
-        
-        const solidMaterial = new THREE.MeshBasicMaterial({ 
-          transparent: true,
-          opacity: DEBUG_SHOW_FACES_VISIBILITY_BY_COLOR ? 0.3 : 0,  // 根据调试开关控制面的显示
-          side: THREE.DoubleSide,
-          vertexColors: true
-        });
-        const solidMesh = new THREE.Mesh(geometry.clone(), solidMaterial);
+        // 对于线段，使用THREE.Line渲染
+        if (shape.type === 'lineSegment') {
+          const lineMaterial = new THREE.LineBasicMaterial({ 
+            color: shape.color,
+            linewidth: 2
+          });
+          const line = new THREE.Line(geometry, lineMaterial);
+          meshGroup.add(line);
+        } else {
+          // 对于其他几何体，使用原有的Mesh渲染
+          const edges = new CustomEdgesGeometry(geometry);
+          
+          // 使用工具函数创建边缘线段，传入选中状态
+          const isSelected = geometryStore.selectedShapeId === shape.id;
+          createEdgeSegments(edges, shape.color, meshGroup as THREE.Group, isSelected);
+          
+          const solidMaterial = new THREE.MeshBasicMaterial({ 
+            transparent: true,
+            opacity: DEBUG_SHOW_FACES_VISIBILITY_BY_COLOR ? 0.3 : 0,  // 根据调试开关控制面的显示
+            side: THREE.DoubleSide,
+            vertexColors: true
+          });
+          const solidMesh = new THREE.Mesh(geometry.clone(), solidMaterial);
 
-        if (DEBUG_SHOW_FACES_VISIBILITY_BY_COLOR) {
-          // 使用工具函数更新面的颜色
-          updateFaceColors(solidMesh.geometry, edges, cameraRef.current!, meshGroup as THREE.Group);
+          if (DEBUG_SHOW_FACES_VISIBILITY_BY_COLOR) {
+            // 使用工具函数更新面的颜色
+            updateFaceColors(solidMesh.geometry, edges, cameraRef.current!, meshGroup as THREE.Group);
+          }
+          
+          meshGroup.add(solidMesh);
         }
-        
-        meshGroup.add(solidMesh);
         scene.add(meshGroup);
         meshes.set(shape.id, meshGroup);
       } else {
@@ -1130,8 +1141,15 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
 
           // 重新计算边缘
           const solidMesh = currentMesh.children.find(child => child instanceof THREE.Mesh) as THREE.Mesh;
-          if (solidMesh && solidMesh.geometry) {
-
+          const line = currentMesh.children.find(child => child instanceof THREE.Line) as THREE.Line;
+          
+          if (shape.type === 'lineSegment' && line) {
+            // 线段只需要更新材质颜色（如果选中状态改变）
+            if (shape.hasSelectionChanged) {
+              const lineMaterial = line.material as THREE.LineBasicMaterial;
+              lineMaterial.color.setHex(geometryStore.selectedShapeId === shape.id ? 0xff6b35 : parseInt(shape.color.replace('#', '0x')));
+            }
+          } else if (solidMesh && solidMesh.geometry) {
             if (isXformOrVisbilityChanged){
               // 更新相机信息
               solidMesh.geometry.userData.camera = cameraRef.current;

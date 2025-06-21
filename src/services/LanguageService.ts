@@ -10,6 +10,7 @@ export interface Translations {
   cylinder: string;
   cone: string;
   torus: string;
+  lineSegment: string;
   deleteSelected: string;
   clearAll: string;
   shapeList: string;
@@ -101,6 +102,7 @@ class LanguageService {
       cylinder: 'Cylinder',
       cone: 'Cone',
       torus: 'Torus',
+      lineSegment: 'Line Segment',
       deleteSelected: 'Delete Selected',
       clearAll: 'Clear All',
       shapeList: 'Shape List',

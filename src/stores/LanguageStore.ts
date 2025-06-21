@@ -60,6 +60,7 @@ class LanguageStore {
       cylinder: 'Cylinder',
       cone: 'Cone',
       torus: 'Torus',
+      lineSegment: 'Line Segment',
       deleteSelected: 'Delete Selected',
       clearAll: 'Clear All',
       shapeList: 'Shape List',
