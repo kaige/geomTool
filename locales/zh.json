@@ -6,6 +6,7 @@
   "cylinder": "圆柱体",
   "cone": "圆锥体",
   "torus": "圆环体",
+  "lineSegment": "线段",
   "deleteSelected": "删除选中",
   "clearAll": "清空全部",
   "shapeList": "图形列表",
