@@ -32,8 +32,13 @@ function createLineEndpoints(
     positions.getZ(1)
   );
 
+  const circleR = 0.05;
+  const ringInnerR = circleR * 0.9;
+  const ringOuterR = circleR;
+  const numOfSegments = 16;
+
   // 创建实心圆的几何体（使用CircleGeometry）
-  const circleGeometry = new THREE.CircleGeometry(0.1, 16);
+  const circleGeometry = new THREE.CircleGeometry(circleR, numOfSegments);
   
   // 创建白色实心圆的材质
   const circleMaterial = new THREE.MeshBasicMaterial({
@@ -60,7 +65,7 @@ function createLineEndpoints(
   meshGroup.add(endPoint);
 
   // 创建边缘线（使用RingGeometry）
-  const ringGeometry = new THREE.RingGeometry(0.095, 0.1, 16);
+  const ringGeometry = new THREE.RingGeometry(ringInnerR, ringOuterR, numOfSegments);
   const ringMaterial = new THREE.MeshBasicMaterial({
     color: 0xff6b35, // 深橙色，与选中状态一致
     side: THREE.DoubleSide,
