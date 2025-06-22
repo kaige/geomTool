@@ -8,6 +8,134 @@ import { GeometryShape, GeometryShape3D, LineSegment, Rectangle, Circle, Triangl
 const DEBUG_SHOW_FACES_VISIBILITY_BY_COLOR = false;
 const DEBUG_SHOW_NORMALS = false;
 
+// 创建线段端点标记的工具函数
+function createLineEndpoints(
+  geometry: THREE.BufferGeometry,
+  meshGroup: THREE.Group,
+  isSelected: boolean = false
+): { startPoint: THREE.Mesh; endPoint: THREE.Mesh } | null {
+  if (!isSelected) return null;
+
+  // 获取线段的起点和终点
+  const positions = geometry.getAttribute('position');
+  if (!positions || positions.count < 2) return null;
+
+  // 获取线段的原始起点和终点
+  const startPos = new THREE.Vector3(
+    positions.getX(0),
+    positions.getY(0),
+    positions.getZ(0)
+  );
+  const endPos = new THREE.Vector3(
+    positions.getX(1),
+    positions.getY(1),
+    positions.getZ(1)
+  );
+
+  // 创建实心圆的几何体（使用CircleGeometry）
+  const circleGeometry = new THREE.CircleGeometry(0.1, 16);
+  
+  // 创建白色实心圆的材质
+  const circleMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff, // 白色
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 0.95,
+    depthTest: false, // 禁用深度测试，确保圆始终在线的上面
+    depthWrite: false // 不写入深度缓冲区
+  });
+
+  // 创建起点标记
+  const startPoint = new THREE.Mesh(circleGeometry, circleMaterial);
+  startPoint.position.copy(startPos); // 相对于meshGroup的位置
+  // 设置较高的渲染顺序，确保圆在线的上面
+  startPoint.renderOrder = 1;
+  meshGroup.add(startPoint);
+
+  // 创建终点标记
+  const endPoint = new THREE.Mesh(circleGeometry.clone(), circleMaterial.clone());
+  endPoint.position.copy(endPos); // 相对于meshGroup的位置
+  // 设置较高的渲染顺序，确保圆在线的上面
+  endPoint.renderOrder = 1;
+  meshGroup.add(endPoint);
+
+  // 创建边缘线（使用RingGeometry）
+  const ringGeometry = new THREE.RingGeometry(0.095, 0.1, 16);
+  const ringMaterial = new THREE.MeshBasicMaterial({
+    color: 0xff6b35, // 深橙色，与选中状态一致
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 1.0,
+    depthTest: false, // 禁用深度测试，确保边缘线始终在最上面
+    depthWrite: false // 不写入深度缓冲区
+  });
+
+  // 创建起点边缘
+  const startRing = new THREE.Mesh(ringGeometry, ringMaterial);
+  startRing.position.copy(startPos); // 相对于meshGroup的位置
+  startRing.renderOrder = 2; // 边缘在最上面
+  meshGroup.add(startRing);
+
+  // 创建终点边缘
+  const endRing = new THREE.Mesh(ringGeometry.clone(), ringMaterial.clone());
+  endRing.position.copy(endPos); // 相对于meshGroup的位置
+  endRing.renderOrder = 2; // 边缘在最上面
+  meshGroup.add(endRing);
+
+  return { startPoint, endPoint };
+}
+
+// 更新线段端点标记的工具函数
+function updateLineEndpoints(
+  meshGroup: THREE.Group,
+  geometry: THREE.BufferGeometry,
+  isSelected: boolean
+): void {
+
+  // 移除现有的端点标记（包括实心圆和边缘线）
+  let removedCount = 0;
+  meshGroup.children.forEach(child => {
+    if (child instanceof THREE.Mesh && 
+        (child.geometry instanceof THREE.CircleGeometry || child.geometry instanceof THREE.RingGeometry)) {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach(material => material.dispose());
+        } else {
+          child.material.dispose();
+        }
+      }
+      meshGroup.remove(child);
+      removedCount++;
+    }
+  });
+
+  // 如果被选中，创建新的端点标记
+  if (isSelected) {
+    createLineEndpoints(geometry, meshGroup, true);
+  }
+}
+
+// 更新所有线段端点标记的方向，让它们始终面向相机
+function updateAllLineEndpointsDirection(camera: THREE.Camera, meshes: Map<string, THREE.Object3D>): void {
+  meshes.forEach((meshGroup) => {
+    if (meshGroup instanceof THREE.Group) {
+      // 检查是否是线段（包含Line对象）
+      const line = meshGroup.children.find(child => child instanceof THREE.Line);
+      if (line) {
+        // 找到端点标记（CircleGeometry和RingGeometry）
+        meshGroup.children.forEach(child => {
+          if (child instanceof THREE.Mesh && 
+              (child.geometry instanceof THREE.CircleGeometry || child.geometry instanceof THREE.RingGeometry)) {
+            // 让端点标记始终面向相机
+            child.lookAt(camera.position);
+          }
+        });
+      }
+    }
+  });
+}
+
 // 创建几何体
 const createGeometry = (type: GeometryShape['type']): THREE.BufferGeometry => {
   switch (type) {
@@ -577,11 +705,29 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     const animate = () => {
       requestAnimationFrame(animate);
       
+      // 更新线段端点标记的方向
+      updateAllLineEndpointsDirection(camera, meshesRef.current);
+      
       // 渲染主场景
       renderer.setViewport(0, 0, width, height);
       renderer.setScissor(0, 0, width, height);
       renderer.setScissorTest(false);
       renderer.render(scene, camera);
+      
+      // 额外渲染端点标记，确保它们在最前面
+      renderer.autoClear = false;
+      renderer.clear(false, false, false);
+      meshesRef.current.forEach((meshGroup) => {
+        if (meshGroup instanceof THREE.Group) {
+          meshGroup.children.forEach(child => {
+            if (child instanceof THREE.Mesh && 
+                (child.geometry instanceof THREE.CircleGeometry || child.geometry instanceof THREE.RingGeometry)) {
+              renderer.render(child, camera);
+            }
+          });
+        }
+      });
+      renderer.autoClear = true;
       
       // 同步坐标轴相机视角
       if (axesCameraRef.current && camera) {
@@ -748,10 +894,17 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       
       meshesRef.current.forEach((meshGroup, id) => {
         if (meshGroup instanceof THREE.Group) {
-          const solidMesh = meshGroup.children.find(child => child instanceof THREE.Mesh);
+          const solidMesh = meshGroup.children.find(child => 
+            child instanceof THREE.Mesh && 
+            !(child.geometry instanceof THREE.CircleGeometry || child.geometry instanceof THREE.RingGeometry)
+          );
+          const line = meshGroup.children.find(child => child instanceof THREE.Line);
           if (solidMesh) {
             intersectableObjects.push(solidMesh);
             idMap.set(solidMesh, id);
+          } else if (line) {
+            intersectableObjects.push(line);
+            idMap.set(line, id);
           }
         }
       });
@@ -832,7 +985,7 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
             }
           });
         }
-      } else if (!stateRef.current.isRotatingCamera) {
+      } else if (!stateRef.current.isRotatingCamera && !geometryStore.selectedShapeId) {
         const aspect = width / height;
         const worldWidth = stateRef.current.frustumSize * aspect;
         const worldHeight = stateRef.current.frustumSize;
@@ -904,10 +1057,17 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       
       meshesRef.current.forEach((meshGroup, id) => {
         if (meshGroup instanceof THREE.Group) {
-          const solidMesh = meshGroup.children.find(child => child instanceof THREE.Mesh);
+          const solidMesh = meshGroup.children.find(child => 
+            child instanceof THREE.Mesh && 
+            !(child.geometry instanceof THREE.CircleGeometry || child.geometry instanceof THREE.RingGeometry)
+          );
+          const line = meshGroup.children.find(child => child instanceof THREE.Line);
           if (solidMesh) {
             intersectableObjects.push(solidMesh);
             idMap.set(solidMesh, id);
+          } else if (line) {
+            intersectableObjects.push(line);
+            idMap.set(line, id);
           }
         }
       });
@@ -1048,7 +1208,7 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
         if (meshGroup instanceof THREE.Group) {
           scene.remove(meshGroup);
           meshGroup.children.forEach(child => {
-            if (child instanceof THREE.LineSegments || child instanceof THREE.Mesh) {
+            if (child instanceof THREE.LineSegments || child instanceof THREE.Mesh || child instanceof THREE.Line) {
               if (child.geometry) child.geometry.dispose();
               if (child.material) {
                 if (Array.isArray(child.material)) {
@@ -1091,10 +1251,20 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
         if (shape.type === 'lineSegment') {
           const lineMaterial = new THREE.LineBasicMaterial({ 
             color: shape.color,
-            linewidth: 2
+            linewidth: 2,
+            depthTest: true, // 启用深度测试
+            depthWrite: true // 写入深度缓冲区
           });
           const line = new THREE.Line(geometry, lineMaterial);
+          // 设置较低的渲染顺序，确保线段在端点标记下面
+          line.renderOrder = 0;
           meshGroup.add(line);
+          
+          // 为线段添加端点标记（如果被选中）
+          const isSelected = geometryStore.selectedShapeId === shape.id;
+          if (isSelected) {
+            createLineEndpoints(geometry, meshGroup as THREE.Group, true);
+          }
         } else {
           // 对于其他几何体，使用原有的Mesh渲染
           const edges = new CustomEdgesGeometry(geometry);
@@ -1144,10 +1314,19 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
           const line = currentMesh.children.find(child => child instanceof THREE.Line) as THREE.Line;
           
           if (shape.type === 'lineSegment' && line) {
-            // 线段只需要更新材质颜色（如果选中状态改变）
-            if (shape.hasSelectionChanged) {
-              const lineMaterial = line.material as THREE.LineBasicMaterial;
-              lineMaterial.color.setHex(geometryStore.selectedShapeId === shape.id ? 0xff6b35 : parseInt(shape.color.replace('#', '0x')));
+            // 线段需要更新材质颜色（如果选中状态改变）或位置（如果变换改变）
+            if (shape.hasSelectionChanged || isXformOrVisbilityChanged) {
+              if (shape.hasSelectionChanged) {
+                const lineMaterial = line.material as THREE.LineBasicMaterial;
+                lineMaterial.color.setHex(geometryStore.selectedShapeId === shape.id ? 0xff6b35 : parseInt(shape.color.replace('#', '0x')));
+                // 确保深度测试设置正确
+                lineMaterial.depthTest = true;
+                lineMaterial.depthWrite = true;
+              }
+              
+              // 更新端点标记
+              const isSelected = geometryStore.selectedShapeId === shape.id;
+              updateLineEndpoints(meshGroup as THREE.Group, line.geometry, isSelected);
             }
           } else if (solidMesh && solidMesh.geometry) {
             if (isXformOrVisbilityChanged){
