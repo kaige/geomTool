@@ -171,8 +171,8 @@ function updateAllLineEndpointsDirection(camera: THREE.Camera, meshes: Map<strin
 }
 
 // 创建几何体
-const createGeometry = (type: GeometryShape['type']): THREE.BufferGeometry => {
-  switch (type) {
+const createGeometry = (shape: GeometryShape): THREE.BufferGeometry => {
+  switch (shape.type) {
     case 'sphere':
       return new THREE.SphereGeometry(1, 32, 32);
     case 'cube':
@@ -183,31 +183,128 @@ const createGeometry = (type: GeometryShape['type']): THREE.BufferGeometry => {
       return new THREE.ConeGeometry(1, 2, 32);
     case 'torus':
       return new THREE.TorusGeometry(1, 0.4, 16, 100);
-    case 'lineSegment':
-      // 线段几何体 - 简单的线段
+    case 'lineSegment': {
+      // 线段几何体 - 根据实际顶点位置创建
+      const lineShape = shape as LineSegment;
+      const startVertex = geometryStore.getVertexById(lineShape.startVertexId);
+      const endVertex = geometryStore.getVertexById(lineShape.endVertexId);
+      
+      if (!startVertex || !endVertex) {
+        console.warn('线段顶点未找到，使用默认位置');
+        const lineGeometry = new THREE.BufferGeometry();
+        const positions = new Float32Array([0, 0, 0, 1, 0, 0]);
+        lineGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        return lineGeometry;
+      }
+      
       const lineGeometry = new THREE.BufferGeometry();
-      const positions = new Float32Array([0, 0, 0, 6, 0, 0]); // 从原点到x轴1单位
+      const positions = new Float32Array([
+        startVertex.position.x, startVertex.position.y, startVertex.position.z,
+        endVertex.position.x, endVertex.position.y, endVertex.position.z
+      ]);
       lineGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       return lineGeometry;
-    case 'rectangle':
-      // 矩形几何体 - 平面矩形
-      return new THREE.PlaneGeometry(1, 1);
-    case 'circle':
-      // 圆形几何体 - 平面圆形
-      return new THREE.CircleGeometry(1, 32);
-    case 'triangle':
-      // 三角形几何体 - 平面三角形
-      const triangleGeometry = new THREE.BufferGeometry();
-      const trianglePositions = new Float32Array([
-        0, 0.5, 0,    // 顶点1
-        -0.5, -0.5, 0, // 顶点2
-        0.5, -0.5, 0   // 顶点3
+    }
+    case 'rectangle': {
+      // 矩形几何体 - 根据实际顶点位置创建
+      const rectShape = shape as Rectangle;
+      const vertices = rectShape.vertexIds.map(id => geometryStore.getVertexById(id)).filter(Boolean);
+      
+      if (vertices.length !== 4) {
+        console.warn('矩形顶点未找到或数量不正确，使用默认矩形');
+        return new THREE.PlaneGeometry(1, 1);
+      }
+      
+      const rectGeometry = new THREE.BufferGeometry();
+      const positions = new Float32Array([
+        vertices[0]!.position.x, vertices[0]!.position.y, vertices[0]!.position.z,
+        vertices[1]!.position.x, vertices[1]!.position.y, vertices[1]!.position.z,
+        vertices[2]!.position.x, vertices[2]!.position.y, vertices[2]!.position.z,
+        vertices[0]!.position.x, vertices[0]!.position.y, vertices[0]!.position.z,
+        vertices[2]!.position.x, vertices[2]!.position.y, vertices[2]!.position.z,
+        vertices[3]!.position.x, vertices[3]!.position.y, vertices[3]!.position.z
       ]);
-      triangleGeometry.setAttribute('position', new THREE.BufferAttribute(trianglePositions, 3));
+      rectGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      return rectGeometry;
+    }
+    case 'circle': {
+      // 圆形几何体 - 根据实际半径创建
+      const circleShape = shape as Circle;
+      const curve = geometryStore.getCurveById(circleShape.curveId);
+      
+      if (!curve) {
+        console.warn('圆形曲线未找到，使用默认半径');
+        return new THREE.CircleGeometry(1, 32);
+      }
+      
+      return new THREE.CircleGeometry(curve.radius, 32);
+    }
+    case 'triangle': {
+      // 三角形几何体 - 根据实际顶点位置创建
+      const triangleShape = shape as Triangle;
+      const vertices = triangleShape.vertexIds.map(id => geometryStore.getVertexById(id)).filter(Boolean);
+      
+      if (vertices.length !== 3) {
+        console.warn('三角形顶点未找到或数量不正确，使用默认三角形');
+        const triangleGeometry = new THREE.BufferGeometry();
+        const trianglePositions = new Float32Array([
+          0, 0.5, 0,    // 顶点1
+          -0.5, -0.5, 0, // 顶点2
+          0.5, -0.5, 0   // 顶点3
+        ]);
+        triangleGeometry.setAttribute('position', new THREE.BufferAttribute(trianglePositions, 3));
+        return triangleGeometry;
+      }
+      
+      const triangleGeometry = new THREE.BufferGeometry();
+      const positions = new Float32Array([
+        vertices[0]!.position.x, vertices[0]!.position.y, vertices[0]!.position.z,
+        vertices[1]!.position.x, vertices[1]!.position.y, vertices[1]!.position.z,
+        vertices[2]!.position.x, vertices[2]!.position.y, vertices[2]!.position.z
+      ]);
+      triangleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       return triangleGeometry;
-    case 'polygon':
-      // 多边形几何体 - 使用正六边形作为默认
-      return new THREE.CircleGeometry(1, 6);
+    }
+    case 'polygon': {
+      // 多边形几何体 - 根据实际顶点位置创建
+      const polygonShape = shape as Polygon;
+      const vertices = polygonShape.vertexIds.map(id => geometryStore.getVertexById(id)).filter(Boolean);
+      
+      if (vertices.length < 3) {
+        console.warn('多边形顶点数量不足，使用默认六边形');
+        return new THREE.CircleGeometry(1, 6);
+      }
+      
+      // 创建多边形几何体
+      const polygonGeometry = new THREE.BufferGeometry();
+      const positions: number[] = [];
+      
+      // 使用三角形扇形来构建多边形
+      const center = { x: 0, y: 0, z: 0 };
+      vertices.forEach(vertex => {
+        center.x += vertex!.position.x;
+        center.y += vertex!.position.y;
+        center.z += vertex!.position.z;
+      });
+      center.x /= vertices.length;
+      center.y /= vertices.length;
+      center.z /= vertices.length;
+      
+      // 创建三角形扇形
+      for (let i = 0; i < vertices.length; i++) {
+        const current = vertices[i]!;
+        const next = vertices[(i + 1) % vertices.length]!;
+        
+        positions.push(
+          center.x, center.y, center.z,
+          current.position.x, current.position.y, current.position.z,
+          next.position.x, next.position.y, next.position.z
+        );
+      }
+      
+      polygonGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+      return polygonGeometry;
+    }
     default:
       return new THREE.BoxGeometry(1, 1, 1);
   }
@@ -285,6 +382,35 @@ function isTransformOrVisibilityChanged(currentMesh: THREE.Group<THREE.Object3DE
     currentMesh.scale.y !== shape.scale.y ||
     currentMesh.scale.z !== shape.scale.z ||
     currentMesh.visible !== shape.visible;
+}
+
+// 检查顶点是否发生变化的工具函数
+function hasVerticesChanged(shape: GeometryShape): boolean {
+  switch (shape.type) {
+    case 'lineSegment': {
+      const lineShape = shape as LineSegment;
+      const startVertex = geometryStore.getVertexById(lineShape.startVertexId);
+      const endVertex = geometryStore.getVertexById(lineShape.endVertexId);
+      return startVertex?.hasChanged || endVertex?.hasChanged || false;
+    }
+    case 'rectangle':
+    case 'triangle':
+    case 'polygon': {
+      const polygonShape = shape as Rectangle | Triangle | Polygon;
+      return polygonShape.vertexIds.some(id => {
+        const vertex = geometryStore.getVertexById(id);
+        return vertex?.hasChanged || false;
+      });
+    }
+    case 'circle': {
+      const circleShape = shape as Circle;
+      const centerVertex = geometryStore.getVertexById(circleShape.centerVertexId);
+      const curve = geometryStore.getCurveById(circleShape.curveId);
+      return centerVertex?.hasChanged || curve?.hasChanged || false;
+    }
+    default:
+      return false;
+  }
 }
 
 function updateShapeEdgesGeometry(meshGroup: THREE.Object3D<THREE.Object3DEventMap> | undefined, solidMeshGeometry: THREE.BufferGeometry<THREE.NormalBufferAttributes>, shape: GeometryShape) {
@@ -1273,7 +1399,7 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
         meshGroup.updateMatrix();
         meshGroup.updateMatrixWorld(true);
 
-        const geometry = createGeometry(shape.type);
+        const geometry = createGeometry(shape);
         
         // 将相机和meshGroup信息添加到geometry的userData中
         geometry.userData.camera = cameraRef.current;
@@ -1327,9 +1453,10 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       } else {
         const currentMesh = meshGroup as THREE.Group;
         const isXformOrVisbilityChanged = isTransformOrVisibilityChanged(currentMesh, shape);
+        const verticesChanged = hasVerticesChanged(shape);
         
-        // 检查位置、旋转、缩放或可见性是否变化
-        if ( isXformOrVisbilityChanged || shape.hasSelectionChanged || shape.hasChanged) {
+        // 检查位置、旋转、缩放、可见性或顶点是否变化
+        if (isXformOrVisbilityChanged || shape.hasSelectionChanged || shape.hasChanged || verticesChanged) {
           needsUpdate = true;
           needsUpdateRef.current = true;
 
@@ -1343,39 +1470,107 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
             meshGroup.updateMatrixWorld(true);
           }
 
-          // 重新计算边缘
-          const solidMesh = currentMesh.children.find(child => child instanceof THREE.Mesh) as THREE.Mesh;
-          const line = currentMesh.children.find(child => child instanceof THREE.Line) as THREE.Line;
-          
-          if (shape.type === 'lineSegment' && line) {
-            // 线段需要更新材质颜色（如果选中状态改变）或位置（如果变换改变）
-            if (shape.hasSelectionChanged || isXformOrVisbilityChanged) {
-              if (shape.hasSelectionChanged) {
-                const lineMaterial = line.material as THREE.LineBasicMaterial;
-                lineMaterial.color.setHex(geometryStore.selectedShapeId === shape.id ? 0xff6b35 : parseInt(shape.color.replace('#', '0x')));
-                // 确保深度测试设置正确
-                lineMaterial.depthTest = true;
-                lineMaterial.depthWrite = true;
+          // 如果顶点发生变化，需要重新创建几何体
+          if (verticesChanged) {
+            // 清理现有的几何体和材质
+            currentMesh.children.forEach(child => {
+              if (child instanceof THREE.LineSegments || child instanceof THREE.Mesh || child instanceof THREE.Line) {
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) {
+                  if (Array.isArray(child.material)) {
+                    child.material.forEach(material => material.dispose());
+                  } else {
+                    child.material.dispose();
+                  }
+                }
+                currentMesh.remove(child);
+              }
+            });
+
+            // 重新创建几何体
+            const newGeometry = createGeometry(shape);
+            
+            // 将相机和meshGroup信息添加到geometry的userData中
+            newGeometry.userData.camera = cameraRef.current;
+            newGeometry.userData.meshGroup = meshGroup;
+            newGeometry.userData.camera.updateMatrix();
+            newGeometry.userData.camera.updateMatrixWorld(true);
+            
+            // 对于线段，使用THREE.Line渲染
+            if (shape.type === 'lineSegment') {
+              const lineMaterial = new THREE.LineBasicMaterial({ 
+                color: shape.color,
+                linewidth: 2,
+                depthTest: true,
+                depthWrite: true
+              });
+              const line = new THREE.Line(newGeometry, lineMaterial);
+              line.renderOrder = 0;
+              meshGroup.add(line);
+              
+              // 为线段添加端点标记（如果被选中）
+              const isSelected = geometryStore.selectedShapeId === shape.id;
+              if (isSelected) {
+                createLineEndpoints(newGeometry, meshGroup as THREE.Group, true);
+              }
+            } else {
+              // 对于其他几何体，使用原有的Mesh渲染
+              const edges = new CustomEdgesGeometry(newGeometry);
+              
+              // 使用工具函数创建边缘线段，传入选中状态
+              const isSelected = geometryStore.selectedShapeId === shape.id;
+              createEdgeSegments(edges, shape.color, meshGroup as THREE.Group, isSelected);
+              
+              const solidMaterial = new THREE.MeshBasicMaterial({ 
+                transparent: true,
+                opacity: DEBUG_SHOW_FACES_VISIBILITY_BY_COLOR ? 0.3 : 0,
+                side: THREE.DoubleSide,
+                vertexColors: true
+              });
+              const solidMesh = new THREE.Mesh(newGeometry.clone(), solidMaterial);
+
+              if (DEBUG_SHOW_FACES_VISIBILITY_BY_COLOR) {
+                // 使用工具函数更新面的颜色
+                updateFaceColors(solidMesh.geometry, edges, cameraRef.current!, meshGroup as THREE.Group);
               }
               
-              // 更新端点标记
-              const isSelected = geometryStore.selectedShapeId === shape.id;
-              updateLineEndpoints(meshGroup as THREE.Group, line.geometry, isSelected);
+              meshGroup.add(solidMesh);
             }
-          } else if (solidMesh && solidMesh.geometry) {
-            if (isXformOrVisbilityChanged){
-              // 更新相机信息
-              solidMesh.geometry.userData.camera = cameraRef.current;
-              solidMesh.geometry.userData.meshGroup = meshGroup;
-              solidMesh.geometry.userData.camera.updateMatrix();
-              solidMesh.geometry.userData.camera.updateMatrixWorld(true);
-            }
-            // 更新边缘几何体
-            const newEdges = updateShapeEdgesGeometry(meshGroup, solidMesh.geometry, shape);
+          } else {
+            // 重新计算边缘
+            const solidMesh = currentMesh.children.find(child => child instanceof THREE.Mesh) as THREE.Mesh;
+            const line = currentMesh.children.find(child => child instanceof THREE.Line) as THREE.Line;
+            
+            if (shape.type === 'lineSegment' && line) {
+              // 线段需要更新材质颜色（如果选中状态改变）或位置（如果变换改变）
+              if (shape.hasSelectionChanged || isXformOrVisbilityChanged) {
+                if (shape.hasSelectionChanged) {
+                  const lineMaterial = line.material as THREE.LineBasicMaterial;
+                  lineMaterial.color.setHex(geometryStore.selectedShapeId === shape.id ? 0xff6b35 : parseInt(shape.color.replace('#', '0x')));
+                  // 确保深度测试设置正确
+                  lineMaterial.depthTest = true;
+                  lineMaterial.depthWrite = true;
+                }
+                
+                // 更新端点标记
+                const isSelected = geometryStore.selectedShapeId === shape.id;
+                updateLineEndpoints(meshGroup as THREE.Group, line.geometry, isSelected);
+              }
+            } else if (solidMesh && solidMesh.geometry) {
+              if (isXformOrVisbilityChanged){
+                // 更新相机信息
+                solidMesh.geometry.userData.camera = cameraRef.current;
+                solidMesh.geometry.userData.meshGroup = meshGroup;
+                solidMesh.geometry.userData.camera.updateMatrix();
+                solidMesh.geometry.userData.camera.updateMatrixWorld(true);
+              }
+              // 更新边缘几何体
+              const newEdges = updateShapeEdgesGeometry(meshGroup, solidMesh.geometry, shape);
 
-            if (DEBUG_SHOW_FACES_VISIBILITY_BY_COLOR) {
-              // 使用工具函数更新面的颜色
-              updateFaceColors(solidMesh.geometry, newEdges, cameraRef.current!, meshGroup as THREE.Group);
+              if (DEBUG_SHOW_FACES_VISIBILITY_BY_COLOR) {
+                // 使用工具函数更新面的颜色
+                updateFaceColors(solidMesh.geometry, newEdges, cameraRef.current!, meshGroup as THREE.Group);
+              }
             }
           }
         }

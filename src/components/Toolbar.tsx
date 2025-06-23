@@ -21,8 +21,8 @@ export const Toolbar: React.FC = observer(() => {
     // 对于平面形状，使用新的方法
     else if (type === 'lineSegment') {
       geometryStore.addLineSegment(
-        { x: -1, y: 0, z: 0 },
-        { x: 1, y: 0, z: 0 }
+        { x: -2, y: 0, z: 0 },
+        { x: 2, y: 0, z: 0 }
       );
     }
     else if (type === 'rectangle') {
