@@ -36,12 +36,23 @@ function createLineEndpoints(
   const ringInnerR = circleR * 0.9;
   const ringOuterR = circleR;
   const numOfSegments = 16;
+  const circleRenderOrder = 10;
+  const ringRenderOrder = 11;
 
   // 创建实心圆的几何体（使用CircleGeometry）
   const circleGeometry = new THREE.CircleGeometry(circleR, numOfSegments);
   
-  // 创建白色实心圆的材质
-  const circleMaterial = new THREE.MeshBasicMaterial({
+  // 创建白色实心圆的材质 - 为每个端点创建独立的材质实例
+  const startCircleMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff, // 白色
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 0.95,
+    depthTest: false, // 禁用深度测试，确保圆始终在线的上面
+    depthWrite: false // 不写入深度缓冲区
+  });
+
+  const endCircleMaterial = new THREE.MeshBasicMaterial({
     color: 0xffffff, // 白色
     side: THREE.DoubleSide,
     transparent: true,
@@ -51,22 +62,34 @@ function createLineEndpoints(
   });
 
   // 创建起点标记
-  const startPoint = new THREE.Mesh(circleGeometry, circleMaterial);
+  const startPoint = new THREE.Mesh(circleGeometry, startCircleMaterial);
   startPoint.position.copy(startPos); // 相对于meshGroup的位置
   // 设置较高的渲染顺序，确保圆在线的上面
-  startPoint.renderOrder = 1;
+  startPoint.renderOrder = circleRenderOrder;
   meshGroup.add(startPoint);
 
-  // 创建终点标记
-  const endPoint = new THREE.Mesh(circleGeometry.clone(), circleMaterial.clone());
+  // 创建终点标记 - 使用独立的几何体和材质
+  const endCircleGeometry = new THREE.CircleGeometry(circleR, numOfSegments);
+  const endPoint = new THREE.Mesh(endCircleGeometry, endCircleMaterial);
   endPoint.position.copy(endPos); // 相对于meshGroup的位置
   // 设置较高的渲染顺序，确保圆在线的上面
-  endPoint.renderOrder = 1;
+  endPoint.renderOrder = circleRenderOrder;
   meshGroup.add(endPoint);
 
   // 创建边缘线（使用RingGeometry）
   const ringGeometry = new THREE.RingGeometry(ringInnerR, ringOuterR, numOfSegments);
-  const ringMaterial = new THREE.MeshBasicMaterial({
+  
+  // 为每个边缘创建独立的材质实例
+  const startRingMaterial = new THREE.MeshBasicMaterial({
+    color: 0xff6b35, // 深橙色，与选中状态一致
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 1.0,
+    depthTest: false, // 禁用深度测试，确保边缘线始终在最上面
+    depthWrite: false // 不写入深度缓冲区
+  });
+
+  const endRingMaterial = new THREE.MeshBasicMaterial({
     color: 0xff6b35, // 深橙色，与选中状态一致
     side: THREE.DoubleSide,
     transparent: true,
@@ -76,15 +99,16 @@ function createLineEndpoints(
   });
 
   // 创建起点边缘
-  const startRing = new THREE.Mesh(ringGeometry, ringMaterial);
+  const startRing = new THREE.Mesh(ringGeometry, startRingMaterial);
   startRing.position.copy(startPos); // 相对于meshGroup的位置
-  startRing.renderOrder = 2; // 边缘在最上面
+  startRing.renderOrder = ringRenderOrder; // 边缘在最上面
   meshGroup.add(startRing);
 
-  // 创建终点边缘
-  const endRing = new THREE.Mesh(ringGeometry.clone(), ringMaterial.clone());
+  // 创建终点边缘 - 使用独立的几何体和材质
+  const endRingGeometry = new THREE.RingGeometry(ringInnerR, ringOuterR, numOfSegments);
+  const endRing = new THREE.Mesh(endRingGeometry, endRingMaterial);
   endRing.position.copy(endPos); // 相对于meshGroup的位置
-  endRing.renderOrder = 2; // 边缘在最上面
+  endRing.renderOrder = ringRenderOrder; // 边缘在最上面
   meshGroup.add(endRing);
 
   return { startPoint, endPoint };
@@ -98,21 +122,26 @@ function updateLineEndpoints(
 ): void {
 
   // 移除现有的端点标记（包括实心圆和边缘线）
-  let removedCount = 0;
+  const childrenToRemove: THREE.Object3D[] = [];
   meshGroup.children.forEach(child => {
     if (child instanceof THREE.Mesh && 
         (child.geometry instanceof THREE.CircleGeometry || child.geometry instanceof THREE.RingGeometry)) {
-      if (child.geometry) child.geometry.dispose();
-      if (child.material) {
-        if (Array.isArray(child.material)) {
-          child.material.forEach(material => material.dispose());
-        } else {
-          child.material.dispose();
-        }
-      }
-      meshGroup.remove(child);
-      removedCount++;
+      childrenToRemove.push(child);
     }
+  });
+
+  // 清理要移除的对象
+  childrenToRemove.forEach(child => {
+    const mesh = child as THREE.Mesh;
+    if (mesh.geometry) mesh.geometry.dispose();
+    if (mesh.material) {
+      if (Array.isArray(mesh.material)) {
+        mesh.material.forEach(material => material.dispose());
+      } else {
+        mesh.material.dispose();
+      }
+    }
+    meshGroup.remove(child);
   });
 
   // 如果被选中，创建新的端点标记
@@ -157,7 +186,7 @@ const createGeometry = (type: GeometryShape['type']): THREE.BufferGeometry => {
     case 'lineSegment':
       // 线段几何体 - 简单的线段
       const lineGeometry = new THREE.BufferGeometry();
-      const positions = new Float32Array([0, 0, 0, 1, 0, 0]); // 从原点到x轴1单位
+      const positions = new Float32Array([0, 0, 0, 6, 0, 0]); // 从原点到x轴1单位
       lineGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       return lineGeometry;
     case 'rectangle':
