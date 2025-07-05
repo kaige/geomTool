@@ -709,12 +709,43 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     isDraggingObject: false,
     isRotatingObject: false,
     isRotatingCamera: false,
+    isDraggingEndpoint: false,
+    draggedEndpoint: null as 'start' | 'end' | null,
+    draggedLineId: null as string | null,
     rotationAxis: null as 'x' | 'y' | 'z' | null,
     dragStartWorldPos: null as THREE.Vector3 | null,
     dragStartObjectPos: null as { x: number; y: number; z: number } | null,
     dragStartObjectRotation: null as { x: number; y: number; z: number } | null,
+    dragStartEndpointPos: null as { x: number; y: number; z: number } | null,
+    dragStartVertexPositions: null as { start: { x: number; y: number; z: number }; end: { x: number; y: number; z: number } } | null,
     cameraRotationStart: null as { azimuth: number; elevation: number } | null,
   });
+
+  // 专门用于端点拖拽的屏幕到世界坐标转换
+  const screenToWorldForEndpoint = (screenX: number, screenY: number, planePoint: THREE.Vector3): THREE.Vector3 | null => {
+    const renderer = rendererRef.current;
+    const camera = cameraRef.current;
+    if (!renderer || !camera) return null;
+    const rect = renderer.domElement.getBoundingClientRect();
+    const mouse = new THREE.Vector2();
+    mouse.x = ((screenX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((screenY - rect.top) / rect.height) * 2 + 1;
+
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(mouse, camera);
+
+    // 使用传入的平面点和相机朝向定义平面
+    const cameraDirection = new THREE.Vector3();
+    camera.getWorldDirection(cameraDirection);
+    const plane = new THREE.Plane();
+    plane.setFromNormalAndCoplanarPoint(cameraDirection, planePoint);
+
+    const intersectPoint = new THREE.Vector3();
+    if (raycaster.ray.intersectPlane(plane, intersectPoint)) {
+      return intersectPoint;
+    }
+    return null;
+  };
 
   // 用于防止updateScene函数重复执行，避免在更新过程中触发新的更新
   // 这是一个防重复执行的锁
@@ -754,6 +785,116 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       y: shape.rotation.y.toFixed(3),
       z: shape.rotation.z.toFixed(3)
     });
+  };
+
+  // 辅助函数：检测鼠标是否点击在线段端点上
+  const checkEndpointAtMouse = (event: MouseEvent): { lineId: string; endpoint: 'start' | 'end' } | null => {
+    if (!geometryStore.selectedShapeId) return null;
+    
+    const selectedShape = geometryStore.selectedShape;
+    if (!selectedShape || selectedShape.type !== 'lineSegment') return null;
+
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    const rect = rendererRef.current!.domElement.getBoundingClientRect();
+    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, cameraRef.current!);
+
+    // 检查选中的线段组中的端点标记
+    const selectedMeshGroup = meshesRef.current.get(geometryStore.selectedShapeId);
+    if (!selectedMeshGroup || !(selectedMeshGroup instanceof THREE.Group)) return null;
+
+    // 找到端点标记（CircleGeometry和RingGeometry）
+    const endpointMeshes: THREE.Mesh[] = [];
+    selectedMeshGroup.children.forEach(child => {
+      if (child instanceof THREE.Mesh && 
+          (child.geometry instanceof THREE.CircleGeometry || child.geometry instanceof THREE.RingGeometry)) {
+        endpointMeshes.push(child);
+      }
+    });
+
+    if (endpointMeshes.length === 0) return null;
+
+    // 首先尝试精确的射线检测
+    const intersects = raycaster.intersectObjects(endpointMeshes, false);
+    
+    if (intersects.length > 0) {
+      const clickedMesh = intersects[0].object as THREE.Mesh;
+      const meshIndex = endpointMeshes.indexOf(clickedMesh);
+      
+      // 根据创建顺序：起点圆(0)、终点圆(1)、起点环(2)、终点环(3)
+      // 所以索引0和2是起点，索引1和3是终点
+      const endpoint = (meshIndex === 0 || meshIndex === 2) ? 'start' : 'end';
+      
+      return {
+        lineId: geometryStore.selectedShapeId,
+        endpoint
+      };
+    }
+
+    // 如果精确检测失败，尝试距离检测
+    const raycasterForDistance = new THREE.Raycaster();
+    raycasterForDistance.setFromCamera(mouse, cameraRef.current!);
+
+    // 创建一个虚拟平面来计算鼠标的世界坐标
+    const plane = new THREE.Plane();
+    plane.setFromNormalAndCoplanarPoint(
+      new THREE.Vector3(0, 0, 1), // 假设在XY平面上
+      new THREE.Vector3(0, 0, 0)
+    );
+
+    const mouseWorldPos = new THREE.Vector3();
+    raycasterForDistance.ray.intersectPlane(plane, mouseWorldPos);
+    
+    if (!mouseWorldPos) return null;
+
+    // 获取线段的几何体来找到端点位置
+    const line = selectedMeshGroup.children.find(child => child instanceof THREE.Line) as THREE.Line;
+    if (!line || !line.geometry) return null;
+
+    const positions = line.geometry.getAttribute('position');
+    if (!positions || positions.count < 2) return null;
+
+    // 获取线段的起点和终点（世界坐标）
+    const startPos = new THREE.Vector3(
+      positions.getX(0),
+      positions.getY(0),
+      positions.getZ(0)
+    );
+    const endPos = new THREE.Vector3(
+      positions.getX(1),
+      positions.getY(1),
+      positions.getZ(1)
+    );
+
+    // 将端点位置转换到世界坐标系
+    const worldStartPos = startPos.clone().applyMatrix4(selectedMeshGroup.matrixWorld);
+    const worldEndPos = endPos.clone().applyMatrix4(selectedMeshGroup.matrixWorld);
+
+    // 检测距离阈值（可以根据需要调整）
+    const distanceThreshold = 0.2; // 0.2个单位距离
+
+    const distanceToStart = mouseWorldPos.distanceTo(worldStartPos);
+    const distanceToEnd = mouseWorldPos.distanceTo(worldEndPos);
+
+    if (distanceToStart <= distanceThreshold) {
+      return {
+        lineId: geometryStore.selectedShapeId,
+        endpoint: 'start'
+      };
+    }
+
+    if (distanceToEnd <= distanceThreshold) {
+      return {
+        lineId: geometryStore.selectedShapeId,
+        endpoint: 'end'
+      };
+    }
+
+    return null;
   };
 
   // 初始化主场景
@@ -954,11 +1095,37 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       stateRef.current.isDraggingObject = false;
       stateRef.current.isRotatingObject = false;
       stateRef.current.isRotatingCamera = false;
+      stateRef.current.isDraggingEndpoint = false;
+      stateRef.current.draggedEndpoint = null;
+      stateRef.current.draggedLineId = null;
       stateRef.current.rotationAxis = null;
       stateRef.current.dragStartWorldPos = null;
       stateRef.current.dragStartObjectPos = null;
       stateRef.current.dragStartObjectRotation = null;
+      stateRef.current.dragStartEndpointPos = null;
+      stateRef.current.dragStartVertexPositions = null;
       stateRef.current.cameraRotationStart = null;
+
+      // 首先检查是否点击了线段端点
+      const endpointInfo = checkEndpointAtMouse(event);
+      if (endpointInfo) {
+        stateRef.current.isDraggingEndpoint = true;
+        stateRef.current.draggedEndpoint = endpointInfo.endpoint;
+        stateRef.current.draggedLineId = endpointInfo.lineId;
+        renderer.domElement.style.cursor = 'crosshair';
+        
+        // 获取当前端点位置
+        const selectedShape = geometryStore.selectedShape;
+        if (selectedShape && selectedShape.type === 'lineSegment') {
+          const lineShape = selectedShape as LineSegment;
+          const vertexId = endpointInfo.endpoint === 'start' ? lineShape.startVertexId : lineShape.endVertexId;
+          const vertex = geometryStore.getVertexById(vertexId);
+          if (vertex) {
+            stateRef.current.dragStartEndpointPos = { ...vertex.position };
+          }
+        }
+        return;
+      }
 
       if (geometryStore.selectedShapeId) {
         const clickedShape = checkObjectAtMouse(event);
@@ -985,11 +1152,26 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
             const worldPos = screenToWorld(event.clientX, event.clientY);
             if (worldPos && selectedShape) {
               stateRef.current.dragStartWorldPos = worldPos.clone();
-              stateRef.current.dragStartObjectPos = {
-                x: selectedShape.position.x,
-                y: selectedShape.position.y,
-                z: selectedShape.position.z
-              };
+                          stateRef.current.dragStartObjectPos = {
+              x: selectedShape.position.x,
+              y: selectedShape.position.y,
+              z: selectedShape.position.z
+            };
+            
+            // 如果是线段，还需要记录顶点的初始位置
+            if (selectedShape.type === 'lineSegment') {
+              const lineShape = selectedShape as LineSegment;
+              const startVertex = geometryStore.getVertexById(lineShape.startVertexId);
+              const endVertex = geometryStore.getVertexById(lineShape.endVertexId);
+              
+              if (startVertex && endVertex) {
+                // 记录拖拽开始时的顶点位置
+                stateRef.current.dragStartVertexPositions = {
+                  start: { ...startVertex.position },
+                  end: { ...endVertex.position }
+                };
+              }
+            }
             }
           }
         }
@@ -1079,12 +1261,57 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     };
 
     const handleMouseMove = (event: MouseEvent) => {
+      // 处理悬停检测（无论是否按下鼠标）
+      if (!stateRef.current.isMouseDown) {
+        // 首先检查是否悬停在端点上
+        const endpointInfo = checkEndpointAtMouse(event);
+        if (endpointInfo) {
+          renderer.domElement.style.cursor = 'crosshair';
+          return;
+        }
+        
+        const hoveredShape = checkObjectAtMouse(event);
+        
+        if (hoveredShape && hoveredShape === geometryStore.selectedShapeId) {
+          renderer.domElement.style.cursor = 'grab';
+        } else {
+          renderer.domElement.style.cursor = 'default';
+        }
+      }
+
       if (!stateRef.current.isMouseDown) return;
 
       const deltaX = event.clientX - stateRef.current.mouseX;
       const deltaY = event.clientY - stateRef.current.mouseY;
 
-      if (stateRef.current.isRotatingObject && geometryStore.selectedShapeId && stateRef.current.dragStartObjectRotation && stateRef.current.rotationAxis) {
+      if (stateRef.current.isDraggingEndpoint && stateRef.current.draggedLineId && stateRef.current.draggedEndpoint && stateRef.current.dragStartEndpointPos) {
+        // 处理端点拖拽
+        const selectedShape = geometryStore.selectedShape;
+        if (selectedShape && selectedShape.type === 'lineSegment') {
+          const lineShape = selectedShape as LineSegment;
+          const vertexId = stateRef.current.draggedEndpoint === 'start' ? lineShape.startVertexId : lineShape.endVertexId;
+          const vertex = geometryStore.getVertexById(vertexId);
+          
+          if (vertex) {
+            // 使用线段的位置作为平面参考点，避免累积误差
+            const linePosition = new THREE.Vector3(
+              selectedShape.position.x,
+              selectedShape.position.y,
+              selectedShape.position.z
+            );
+            const currentWorldPos = screenToWorldForEndpoint(event.clientX, event.clientY, linePosition);
+            
+            if (currentWorldPos) {
+              // 更新顶点位置
+              geometryStore.updateVertex(vertexId, {
+                x: currentWorldPos.x,
+                y: currentWorldPos.y,
+                z: currentWorldPos.z
+              });
+            }
+          }
+        }
+      } else if (stateRef.current.isRotatingObject && geometryStore.selectedShapeId && stateRef.current.dragStartObjectRotation && stateRef.current.rotationAxis) {
         const rotationSensitivity = 0.01;
         
         const totalMouseDeltaX = (event.clientX - stateRef.current.startMouseX) * rotationSensitivity;
@@ -1136,14 +1363,37 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
         if (currentWorldPos) {
           const totalDelta = new THREE.Vector3();
           totalDelta.subVectors(currentWorldPos, stateRef.current.dragStartWorldPos);
-          
-          geometryStore.updateShape(geometryStore.selectedShapeId, {
-            position: {
-              x: stateRef.current.dragStartObjectPos.x + totalDelta.x,
-              y: stateRef.current.dragStartObjectPos.y + totalDelta.y,
-              z: stateRef.current.dragStartObjectPos.z + totalDelta.z,
+          // 如果是线段，同步更新其引用的顶点位置
+          const selectedShape = geometryStore.selectedShape;
+          if (selectedShape && selectedShape.type === 'lineSegment') {
+            const lineShape = selectedShape as LineSegment;
+            
+            // 使用拖拽开始时记录的顶点位置
+            if (stateRef.current.dragStartVertexPositions) {
+              geometryStore.updateVertex(lineShape.startVertexId, {
+                x: stateRef.current.dragStartVertexPositions.start.x + totalDelta.x,
+                y: stateRef.current.dragStartVertexPositions.start.y + totalDelta.y,
+                z: stateRef.current.dragStartVertexPositions.start.z + totalDelta.z,
+              });
+              
+              geometryStore.updateVertex(lineShape.endVertexId, {
+                x: stateRef.current.dragStartVertexPositions.end.x + totalDelta.x,
+                y: stateRef.current.dragStartVertexPositions.end.y + totalDelta.y,
+                z: stateRef.current.dragStartVertexPositions.end.z + totalDelta.z,
+              });
             }
-          });
+          }
+          else {
+            // 如果是其他形状，更新形状的位置
+            geometryStore.updateShape(geometryStore.selectedShapeId, {
+              position: {
+                x: stateRef.current.dragStartObjectPos.x + totalDelta.x,
+                y: stateRef.current.dragStartObjectPos.y + totalDelta.y,
+                z: stateRef.current.dragStartObjectPos.z + totalDelta.z,
+              }
+            });
+            console.log('update shape position', geometryStore.selectedShapeId);
+          }
         }
       } else if (!stateRef.current.isRotatingCamera && !geometryStore.selectedShapeId) {
         const aspect = width / height;
@@ -1186,10 +1436,15 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       stateRef.current.isDraggingObject = false;
       stateRef.current.isRotatingObject = false;
       stateRef.current.isRotatingCamera = false;
+      stateRef.current.isDraggingEndpoint = false;
+      stateRef.current.draggedEndpoint = null;
+      stateRef.current.draggedLineId = null;
       stateRef.current.rotationAxis = null;
       stateRef.current.dragStartWorldPos = null;
       stateRef.current.dragStartObjectPos = null;
       stateRef.current.dragStartObjectRotation = null;
+      stateRef.current.dragStartEndpointPos = null;
+      stateRef.current.dragStartVertexPositions = null;
       stateRef.current.cameraRotationStart = null;
       
       const hoveredShape = checkObjectAtMouse(event);
@@ -1201,6 +1456,12 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     };
 
     const handleClick = (event: MouseEvent) => {
+      // 首先检查是否点击了端点，如果是则不处理线段选择
+      const endpointInfo = checkEndpointAtMouse(event);
+      if (endpointInfo) {
+        return; // 点击端点时不处理线段选择
+      }
+
       const raycaster = new THREE.Raycaster();
       const mouse = new THREE.Vector2();
 
@@ -1252,18 +1513,6 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       }
     };
 
-    const handleMouseHover = (event: MouseEvent) => {
-      if (stateRef.current.isMouseDown) return;
-      
-      const hoveredShape = checkObjectAtMouse(event);
-      
-      if (hoveredShape && hoveredShape === geometryStore.selectedShapeId) {
-        renderer.domElement.style.cursor = 'grab';
-      } else {
-        renderer.domElement.style.cursor = 'default';
-      }
-    };
-
     const handleContextMenu = (event: MouseEvent) => {
       event.preventDefault();
     };
@@ -1271,7 +1520,6 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     renderer.domElement.addEventListener('mousedown', handleMouseDown);
     renderer.domElement.addEventListener('mousemove', handleMouseMove);
     renderer.domElement.addEventListener('mouseup', handleMouseUp);
-    renderer.domElement.addEventListener('mouseover', handleMouseHover);
     renderer.domElement.addEventListener('wheel', handleWheel, { passive: false });
     renderer.domElement.addEventListener('contextmenu', handleContextMenu);
 
@@ -1279,7 +1527,6 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       renderer.domElement.removeEventListener('mousedown', handleMouseDown);
       renderer.domElement.removeEventListener('mousemove', handleMouseMove);
       renderer.domElement.removeEventListener('mouseup', handleMouseUp);
-      renderer.domElement.removeEventListener('mouseover', handleMouseHover);
       renderer.domElement.removeEventListener('wheel', handleWheel);
       renderer.domElement.removeEventListener('contextmenu', handleContextMenu);
     };
@@ -1472,7 +1719,7 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
 
           // 如果顶点发生变化，需要重新创建几何体
           if (verticesChanged) {
-            // 清理现有的几何体和材质
+            // 清理现有的几何体和材质（包括端点标记）
             currentMesh.children.forEach(child => {
               if (child instanceof THREE.LineSegments || child instanceof THREE.Mesh || child instanceof THREE.Line) {
                 if (child.geometry) child.geometry.dispose();
@@ -1499,7 +1746,7 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
             // 对于线段，使用THREE.Line渲染
             if (shape.type === 'lineSegment') {
               const lineMaterial = new THREE.LineBasicMaterial({ 
-                color: shape.color,
+                color: geometryStore.selectedShapeId === shape.id ? 0xff6b35 : parseInt(shape.color.replace('#', '0x')),
                 linewidth: 2,
                 depthTest: true,
                 depthWrite: true
@@ -1510,9 +1757,7 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
               
               // 为线段添加端点标记（如果被选中）
               const isSelected = geometryStore.selectedShapeId === shape.id;
-              if (isSelected) {
-                createLineEndpoints(newGeometry, meshGroup as THREE.Group, true);
-              }
+              updateLineEndpoints(meshGroup as THREE.Group, newGeometry, isSelected);
             } else {
               // 对于其他几何体，使用原有的Mesh渲染
               const edges = new CustomEdgesGeometry(newGeometry);
@@ -1543,7 +1788,7 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
             
             if (shape.type === 'lineSegment' && line) {
               // 线段需要更新材质颜色（如果选中状态改变）或位置（如果变换改变）
-              if (shape.hasSelectionChanged || isXformOrVisbilityChanged) {
+              if (shape.hasSelectionChanged || isXformOrVisbilityChanged || verticesChanged) {
                 if (shape.hasSelectionChanged) {
                   const lineMaterial = line.material as THREE.LineBasicMaterial;
                   lineMaterial.color.setHex(geometryStore.selectedShapeId === shape.id ? 0xff6b35 : parseInt(shape.color.replace('#', '0x')));

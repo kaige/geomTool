@@ -44,6 +44,26 @@ export class GeometryStore {
         position,
         hasChanged: true
       };
+      
+      // 更新使用这个顶点的所有形状
+      this.shapes.forEach(shape => {
+        if (shape.type === 'lineSegment') {
+          const line = shape as LineSegment;
+          if (line.startVertexId === id || line.endVertexId === id) {
+            shape.hasChanged = true;
+          }
+        } else if (shape.type === 'rectangle' || shape.type === 'triangle' || shape.type === 'polygon') {
+          const polygon = shape as Rectangle | Triangle | Polygon;
+          if (polygon.vertexIds.includes(id)) {
+            shape.hasChanged = true;
+          }
+        } else if (shape.type === 'circle') {
+          const circle = shape as Circle;
+          if (circle.centerVertexId === id) {
+            shape.hasChanged = true;
+          }
+        }
+      });
     }
   }
 
