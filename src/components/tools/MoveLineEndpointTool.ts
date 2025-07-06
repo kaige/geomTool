@@ -103,4 +103,8 @@ export class MoveLineEndpointTool extends BaseTool {
     }
     return null;
   };
+
+  onKeyDown(event: KeyboardEvent, camera: THREE.OrthographicCamera): void {
+    // 无操作
+  }
 } 

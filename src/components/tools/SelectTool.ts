@@ -204,6 +204,17 @@ export class SelectTool extends BaseTool {
     camera.updateProjectionMatrix();
   };
 
+  onKeyDown = (event: KeyboardEvent, camera: THREE.OrthographicCamera): void => {
+    if (event.key === 'Escape') {
+      // 重置相机到默认位置
+      camera.position.set(0, 0, 15);
+      camera.lookAt(0, 0, 0);
+      camera.up.set(0, 1, 0);
+      camera.updateMatrix();
+      camera.updateMatrixWorld();
+    }
+  };
+
   private handleClick = (event: MouseEvent, camera: THREE.OrthographicCamera, renderer: THREE.WebGLRenderer): void => {
     const endpointInfo = this.checkEndpointAtMouse(event, camera, renderer);
     if (endpointInfo) {

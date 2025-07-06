@@ -80,4 +80,8 @@ export class RotateShapeTool extends BaseTool {
   setRotationAxis = (axis: 'x' | 'y' | 'z'): void => {
     this.selectionState.rotationAxis = axis;
   };
+
+  onKeyDown(event: KeyboardEvent, camera: THREE.OrthographicCamera): void {
+    // 无操作
+  }
 } 

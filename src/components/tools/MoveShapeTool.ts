@@ -110,6 +110,10 @@ export class MoveShapeTool extends BaseTool {
 
   };
 
+  onKeyDown(event: KeyboardEvent, camera: THREE.OrthographicCamera): void {
+    // 无操作
+  }
+
   private screenToWorld = (screenX: number, screenY: number, camera: THREE.OrthographicCamera, renderer: THREE.WebGLRenderer): THREE.Vector3 | null => {
     const rect = renderer.domElement.getBoundingClientRect();
     const mouse = new THREE.Vector2();

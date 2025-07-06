@@ -964,15 +964,6 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     return () => window.removeEventListener('keydown', handleKeyDown);
   };
 
-  // 重置相机到默认位置
-  const resetCameraToDefault = (camera: THREE.OrthographicCamera) => {
-    camera.position.set(0, 0, 15);
-    camera.lookAt(0, 0, 0);
-    camera.up.set(0, 1, 0);
-    camera.updateMatrix();
-    camera.updateMatrixWorld();
-  };
-
   // useEffect is called once when the component is mounted
   useEffect(() => {
     if (!mountRef.current) return;
