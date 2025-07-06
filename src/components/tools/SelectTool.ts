@@ -164,6 +164,7 @@ export class SelectTool extends BaseTool {
   };
 
   onMouseUp = (event: MouseEvent, camera: THREE.OrthographicCamera, renderer: THREE.WebGLRenderer): void => {
+    // 只有在鼠标确实按下时才处理点击逻辑
     if (this.mouseState.isMouseDown) {
       const deltaX = Math.abs(event.clientX - this.mouseState.mouseX);
       const deltaY = Math.abs(event.clientY - this.mouseState.mouseY);
@@ -177,11 +178,7 @@ export class SelectTool extends BaseTool {
     this.cameraState.isRotatingCamera = false;
     this.cameraState.cameraRotationStart = null;
     
-    // 如果当前不是选择工具，切换回选择工具
-    if (this.toolManager.getCurrentTool() !== this) {
-      this.toolManager.activateTool(ToolType.SELECT);
-    }
-    
+    // 更新光标状态
     const hoveredShape = this.checkObjectAtMouse(event, camera, renderer);
     if (hoveredShape && hoveredShape === geometryStore.selectedShapeId) {
       renderer.domElement.style.cursor = 'grab';
@@ -296,8 +293,12 @@ export class SelectTool extends BaseTool {
     const intersects = raycaster.intersectObjects(intersectableObjects, false);
     
     if (intersects.length > 0) {
-      const clickedMesh = intersects[0].object;
-      return idMap.get(clickedMesh) || null;
+      // 如果点击距离小于5，则认为是点击了物体
+      const distanceThreshold = 10;
+      if (intersects[0].distance < distanceThreshold) {
+        const clickedMesh = intersects[0].object;
+        return idMap.get(clickedMesh) || null;
+      }
     }
     return null;
   };
