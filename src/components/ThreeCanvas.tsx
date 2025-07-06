@@ -3,6 +3,8 @@ import { observer } from 'mobx-react';
 import * as THREE from 'three';
 import { geometryStore } from '../stores/GeometryStore';
 import { GeometryShape, GeometryShape3D, LineSegment, Rectangle, Circle, Triangle, Polygon } from '../types/GeometryTypes';
+import { MouseState, CameraState, SelectionState, LineEndpointState, ToolType } from '../types/ToolTypes';
+import { ToolManager } from './tools/ToolManager';
 
 // 调试开关
 const DEBUG_SHOW_FACES_VISIBILITY_BY_COLOR = false;
@@ -693,60 +695,38 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
   const rendererRef = useRef<THREE.WebGLRenderer>();
   const cameraRef = useRef<THREE.OrthographicCamera>();
   const meshesRef = useRef<Map<string, THREE.Object3D>>(new Map());
-  
-  // 坐标轴相关的refs
   const axesSceneRef = useRef<THREE.Scene>();
   const axesCameraRef = useRef<THREE.OrthographicCamera>();
 
-  // 共享状态
-  const stateRef = useRef({
-    frustumSize: 20,
+  // ToolManager 相关状态
+  const mouseState = useRef<MouseState>({
     isMouseDown: false,
     mouseX: 0,
     mouseY: 0,
     startMouseX: 0,
     startMouseY: 0,
+  });
+  const cameraState = useRef<CameraState>({
+    frustumSize: 20,
+    isRotatingCamera: false,
+    cameraRotationStart: null,
+  });
+  const selectionState = useRef<SelectionState>({
     isDraggingObject: false,
     isRotatingObject: false,
-    isRotatingCamera: false,
-    isDraggingEndpoint: false,
-    draggedEndpoint: null as 'start' | 'end' | null,
-    draggedLineId: null as string | null,
-    rotationAxis: null as 'x' | 'y' | 'z' | null,
-    dragStartWorldPos: null as THREE.Vector3 | null,
-    dragStartObjectPos: null as { x: number; y: number; z: number } | null,
-    dragStartObjectRotation: null as { x: number; y: number; z: number } | null,
-    dragStartEndpointPos: null as { x: number; y: number; z: number } | null,
-    dragStartVertexPositions: null as { start: { x: number; y: number; z: number }; end: { x: number; y: number; z: number } } | null,
-    cameraRotationStart: null as { azimuth: number; elevation: number } | null,
+    rotationAxis: null,
+    dragStartWorldPos: null,
+    dragStartObjectPos: null,
+    dragStartObjectRotation: null,
+    dragStartVertexPositions: null,
   });
-
-  // 专门用于端点拖拽的屏幕到世界坐标转换
-  const screenToWorldForEndpoint = (screenX: number, screenY: number, planePoint: THREE.Vector3): THREE.Vector3 | null => {
-    const renderer = rendererRef.current;
-    const camera = cameraRef.current;
-    if (!renderer || !camera) return null;
-    const rect = renderer.domElement.getBoundingClientRect();
-    const mouse = new THREE.Vector2();
-    mouse.x = ((screenX - rect.left) / rect.width) * 2 - 1;
-    mouse.y = -((screenY - rect.top) / rect.height) * 2 + 1;
-
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(mouse, camera);
-
-    // 使用传入的平面点和相机朝向定义平面
-    const cameraDirection = new THREE.Vector3();
-    camera.getWorldDirection(cameraDirection);
-    const plane = new THREE.Plane();
-    plane.setFromNormalAndCoplanarPoint(cameraDirection, planePoint);
-
-    const intersectPoint = new THREE.Vector3();
-    if (raycaster.ray.intersectPlane(plane, intersectPoint)) {
-      return intersectPoint;
-    }
-    return null;
-  };
-
+  const lineEndpointState = useRef<LineEndpointState>({
+    isDraggingEndpoint: false,
+    draggedEndpoint: null,
+    draggedLineId: null,
+    dragStartEndpointPos: null,
+    dragStartVertexPositions: null,
+  });
   // 用于防止updateScene函数重复执行，避免在更新过程中触发新的更新
   // 这是一个防重复执行的锁
   // 当 updateScene 函数正在执行时，将其设置为 true
@@ -760,158 +740,34 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
   // 这样可以避免在 React 渲染过程中直接修改 MobX 状态，防止出现警告或错误
   // 
   const needsUpdateRef = useRef(false);
-
-  // 辅助函数：开始旋转操作
-  const startRotation = (axis: 'x' | 'y' | 'z', selectedShape: any) => {
-    stateRef.current.isRotatingObject = true;
-    stateRef.current.rotationAxis = axis;
-    if (rendererRef.current) {
-      rendererRef.current.domElement.style.cursor = 'crosshair';
-    }
-    
-    if (selectedShape) {
-      stateRef.current.dragStartObjectRotation = {
-        x: selectedShape.rotation.x,
-        y: selectedShape.rotation.y,
-        z: selectedShape.rotation.z
-      };
-    }
-  };
-
-  // 辅助函数：打印旋转值调试信息
-  const printRotationDebug = (shapeId: string, shape: any) => {
-    console.log(`[选中物体] ID: ${shapeId}, 旋转值（弧度）:`, {
-      x: shape.rotation.x.toFixed(3),
-      y: shape.rotation.y.toFixed(3),
-      z: shape.rotation.z.toFixed(3)
-    });
-  };
-
-  // 辅助函数：检测鼠标是否点击在线段端点上
-  const checkEndpointAtMouse = (event: MouseEvent): { lineId: string; endpoint: 'start' | 'end' } | null => {
-    if (!geometryStore.selectedShapeId) return null;
-    
-    const selectedShape = geometryStore.selectedShape;
-    if (!selectedShape || selectedShape.type !== 'lineSegment') return null;
-
-    const raycaster = new THREE.Raycaster();
-    const mouse = new THREE.Vector2();
-
-    const rect = rendererRef.current!.domElement.getBoundingClientRect();
-    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-    raycaster.setFromCamera(mouse, cameraRef.current!);
-
-    // 检查选中的线段组中的端点标记
-    const selectedMeshGroup = meshesRef.current.get(geometryStore.selectedShapeId);
-    if (!selectedMeshGroup || !(selectedMeshGroup instanceof THREE.Group)) return null;
-
-    // 找到端点标记（CircleGeometry和RingGeometry）
-    const endpointMeshes: THREE.Mesh[] = [];
-    selectedMeshGroup.children.forEach(child => {
-      if (child instanceof THREE.Mesh && 
-          (child.geometry instanceof THREE.CircleGeometry || child.geometry instanceof THREE.RingGeometry)) {
-        endpointMeshes.push(child);
-      }
-    });
-
-    if (endpointMeshes.length === 0) return null;
-
-    // 首先尝试精确的射线检测
-    const intersects = raycaster.intersectObjects(endpointMeshes, false);
-    
-    if (intersects.length > 0) {
-      const clickedMesh = intersects[0].object as THREE.Mesh;
-      const meshIndex = endpointMeshes.indexOf(clickedMesh);
-      
-      // 根据创建顺序：起点圆(0)、终点圆(1)、起点环(2)、终点环(3)
-      // 所以索引0和2是起点，索引1和3是终点
-      const endpoint = (meshIndex === 0 || meshIndex === 2) ? 'start' : 'end';
-      
-      return {
-        lineId: geometryStore.selectedShapeId,
-        endpoint
-      };
-    }
-
-    // 如果精确检测失败，尝试距离检测
-    const raycasterForDistance = new THREE.Raycaster();
-    raycasterForDistance.setFromCamera(mouse, cameraRef.current!);
-
-    // 创建一个虚拟平面来计算鼠标的世界坐标
-    const plane = new THREE.Plane();
-    plane.setFromNormalAndCoplanarPoint(
-      new THREE.Vector3(0, 0, 1), // 假设在XY平面上
-      new THREE.Vector3(0, 0, 0)
+  
+  
+  
+  
+  const toolManagerRef = useRef<ToolManager | null>(null);
+  if (!toolManagerRef.current) {
+    toolManagerRef.current = new ToolManager(
+      mouseState.current,
+      cameraState.current,
+      selectionState.current,
+      lineEndpointState.current,
+      meshesRef
     );
-
-    const mouseWorldPos = new THREE.Vector3();
-    raycasterForDistance.ray.intersectPlane(plane, mouseWorldPos);
-    
-    if (!mouseWorldPos) return null;
-
-    // 获取线段的几何体来找到端点位置
-    const line = selectedMeshGroup.children.find(child => child instanceof THREE.Line) as THREE.Line;
-    if (!line || !line.geometry) return null;
-
-    const positions = line.geometry.getAttribute('position');
-    if (!positions || positions.count < 2) return null;
-
-    // 获取线段的起点和终点（世界坐标）
-    const startPos = new THREE.Vector3(
-      positions.getX(0),
-      positions.getY(0),
-      positions.getZ(0)
-    );
-    const endPos = new THREE.Vector3(
-      positions.getX(1),
-      positions.getY(1),
-      positions.getZ(1)
-    );
-
-    // 将端点位置转换到世界坐标系
-    const worldStartPos = startPos.clone().applyMatrix4(selectedMeshGroup.matrixWorld);
-    const worldEndPos = endPos.clone().applyMatrix4(selectedMeshGroup.matrixWorld);
-
-    // 检测距离阈值（可以根据需要调整）
-    const distanceThreshold = 0.2; // 0.2个单位距离
-
-    const distanceToStart = mouseWorldPos.distanceTo(worldStartPos);
-    const distanceToEnd = mouseWorldPos.distanceTo(worldEndPos);
-
-    if (distanceToStart <= distanceThreshold) {
-      return {
-        lineId: geometryStore.selectedShapeId,
-        endpoint: 'start'
-      };
-    }
-
-    if (distanceToEnd <= distanceThreshold) {
-      return {
-        lineId: geometryStore.selectedShapeId,
-        endpoint: 'end'
-      };
-    }
-
-    return null;
-  };
+  }
 
   // 初始化主场景
   const initializeMainScene = () => {
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xffffff);
     sceneRef.current = scene;
-
-    // 创建正交相机
     const aspect = width / height;
-    stateRef.current.frustumSize = 20;
+    cameraState.current.frustumSize = 20;
     const camera = new THREE.OrthographicCamera(
-      -stateRef.current.frustumSize * aspect / 2, 
-      stateRef.current.frustumSize * aspect / 2, 
-      stateRef.current.frustumSize / 2, 
-      -stateRef.current.frustumSize / 2, 
-      0.1, 
+      -cameraState.current.frustumSize * aspect / 2,
+      cameraState.current.frustumSize * aspect / 2,
+      cameraState.current.frustumSize / 2,
+      -cameraState.current.frustumSize / 2,
+      0.1,
       1000
     );
     camera.position.set(0, 0, 15);
@@ -1063,456 +919,23 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       
       renderer.setScissorTest(false);
     };
-    
     animate();
   };
 
-  // 鼠标事件处理
+  // 事件分发
   const setupMouseEvents = (renderer: THREE.WebGLRenderer, camera: THREE.OrthographicCamera) => {
     const handleWheel = (event: WheelEvent) => {
-      event.preventDefault();
-      
-      const zoomSpeed = 0.1;
-      const delta = event.deltaY > 0 ? 1 : -1;
-      stateRef.current.frustumSize += delta * zoomSpeed * stateRef.current.frustumSize;
-      
-      stateRef.current.frustumSize = Math.max(1, Math.min(100, stateRef.current.frustumSize));
-      
-      const aspect = width / height;
-      camera.left = -stateRef.current.frustumSize * aspect / 2;
-      camera.right = stateRef.current.frustumSize * aspect / 2;
-      camera.top = stateRef.current.frustumSize / 2;
-      camera.bottom = -stateRef.current.frustumSize / 2;
-      camera.updateProjectionMatrix();
+      toolManagerRef.current?.handleWheel(event, camera);
     };
-
     const handleMouseDown = (event: MouseEvent) => {
-      stateRef.current.isMouseDown = true;
-      stateRef.current.mouseX = event.clientX;
-      stateRef.current.mouseY = event.clientY;
-      stateRef.current.startMouseX = event.clientX;
-      stateRef.current.startMouseY = event.clientY;
-      stateRef.current.isDraggingObject = false;
-      stateRef.current.isRotatingObject = false;
-      stateRef.current.isRotatingCamera = false;
-      stateRef.current.isDraggingEndpoint = false;
-      stateRef.current.draggedEndpoint = null;
-      stateRef.current.draggedLineId = null;
-      stateRef.current.rotationAxis = null;
-      stateRef.current.dragStartWorldPos = null;
-      stateRef.current.dragStartObjectPos = null;
-      stateRef.current.dragStartObjectRotation = null;
-      stateRef.current.dragStartEndpointPos = null;
-      stateRef.current.dragStartVertexPositions = null;
-      stateRef.current.cameraRotationStart = null;
-
-      // 首先检查是否点击了线段端点
-      const endpointInfo = checkEndpointAtMouse(event);
-      if (endpointInfo) {
-        stateRef.current.isDraggingEndpoint = true;
-        stateRef.current.draggedEndpoint = endpointInfo.endpoint;
-        stateRef.current.draggedLineId = endpointInfo.lineId;
-        renderer.domElement.style.cursor = 'crosshair';
-        
-        // 获取当前端点位置
-        const selectedShape = geometryStore.selectedShape;
-        if (selectedShape && selectedShape.type === 'lineSegment') {
-          const lineShape = selectedShape as LineSegment;
-          const vertexId = endpointInfo.endpoint === 'start' ? lineShape.startVertexId : lineShape.endVertexId;
-          const vertex = geometryStore.getVertexById(vertexId);
-          if (vertex) {
-            stateRef.current.dragStartEndpointPos = { ...vertex.position };
-          }
-        }
-        return;
-      }
-
-      if (geometryStore.selectedShapeId) {
-        const clickedShape = checkObjectAtMouse(event);
-        if (clickedShape && clickedShape === geometryStore.selectedShapeId) {
-          const selectedShape = geometryStore.selectedShape;
-          
-          let targetRotationAxis: 'x' | 'y' | 'z' | null = null;
-          if (event.altKey) {
-            targetRotationAxis = 'x';
-          }
-          else if (event.shiftKey) {
-            targetRotationAxis = 'y';
-          }
-          else if (event.ctrlKey) {
-            targetRotationAxis = 'z';
-          }  
-          
-          if (targetRotationAxis) {
-            startRotation(targetRotationAxis, selectedShape);
-          } else {
-            stateRef.current.isDraggingObject = true;
-            renderer.domElement.style.cursor = 'grabbing';
-            
-            const worldPos = screenToWorld(event.clientX, event.clientY);
-            if (worldPos && selectedShape) {
-              stateRef.current.dragStartWorldPos = worldPos.clone();
-                          stateRef.current.dragStartObjectPos = {
-              x: selectedShape.position.x,
-              y: selectedShape.position.y,
-              z: selectedShape.position.z
-            };
-            
-            // 如果是线段，还需要记录顶点的初始位置
-            if (selectedShape.type === 'lineSegment') {
-              const lineShape = selectedShape as LineSegment;
-              const startVertex = geometryStore.getVertexById(lineShape.startVertexId);
-              const endVertex = geometryStore.getVertexById(lineShape.endVertexId);
-              
-              if (startVertex && endVertex) {
-                // 记录拖拽开始时的顶点位置
-                stateRef.current.dragStartVertexPositions = {
-                  start: { ...startVertex.position },
-                  end: { ...endVertex.position }
-                };
-              }
-            }
-            }
-          }
-        }
-      } else if (event.ctrlKey) {
-        stateRef.current.isRotatingCamera = true;
-        renderer.domElement.style.cursor = 'move';
-        
-        const cameraDirection = new THREE.Vector3();
-        camera.getWorldDirection(cameraDirection);
-        
-        const azimuth = Math.atan2(-cameraDirection.x, -cameraDirection.z);
-        const elevation = Math.asin(cameraDirection.y);
-        
-        stateRef.current.cameraRotationStart = { azimuth, elevation };
-      }
+      toolManagerRef.current?.handleMouseDown(event, camera, renderer);
     };
-
-    const screenToWorld = (screenX: number, screenY: number): THREE.Vector3 | null => {
-      const rect = renderer.domElement.getBoundingClientRect();
-      const mouse = new THREE.Vector2();
-      mouse.x = ((screenX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((screenY - rect.top) / rect.height) * 2 + 1;
-
-      const raycaster = new THREE.Raycaster();
-      raycaster.setFromCamera(mouse, camera);
-
-      const cameraDirection = new THREE.Vector3();
-      camera.getWorldDirection(cameraDirection);
-      
-      let planePoint = new THREE.Vector3(0, 0, 0);
-      if (geometryStore.selectedShape) {
-        planePoint.set(
-          geometryStore.selectedShape.position.x,
-          geometryStore.selectedShape.position.y,
-          geometryStore.selectedShape.position.z
-        );
-      }
-      
-      const plane = new THREE.Plane();
-      plane.setFromNormalAndCoplanarPoint(cameraDirection, planePoint);
-      
-      const intersectPoint = new THREE.Vector3();
-      
-      if (raycaster.ray.intersectPlane(plane, intersectPoint)) {
-        return intersectPoint;
-      }
-      return null;
-    };
-
-    const checkObjectAtMouse = (event: MouseEvent): string | null => {
-      const raycaster = new THREE.Raycaster();
-      const mouse = new THREE.Vector2();
-
-      const rect = renderer.domElement.getBoundingClientRect();
-      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-      raycaster.setFromCamera(mouse, camera);
-
-      const intersectableObjects: THREE.Object3D[] = [];
-      const idMap = new Map<THREE.Object3D, string>();
-      
-      meshesRef.current.forEach((meshGroup, id) => {
-        if (meshGroup instanceof THREE.Group) {
-          const solidMesh = meshGroup.children.find(child => 
-            child instanceof THREE.Mesh && 
-            !(child.geometry instanceof THREE.CircleGeometry || child.geometry instanceof THREE.RingGeometry)
-          );
-          const line = meshGroup.children.find(child => child instanceof THREE.Line);
-          if (solidMesh) {
-            intersectableObjects.push(solidMesh);
-            idMap.set(solidMesh, id);
-          } else if (line) {
-            intersectableObjects.push(line);
-            idMap.set(line, id);
-          }
-        }
-      });
-
-      const intersects = raycaster.intersectObjects(intersectableObjects, false);
-      
-      if (intersects.length > 0) {
-        const clickedMesh = intersects[0].object;
-        return idMap.get(clickedMesh) || null;
-      }
-      return null;
-    };
-
     const handleMouseMove = (event: MouseEvent) => {
-      // 处理悬停检测（无论是否按下鼠标）
-      if (!stateRef.current.isMouseDown) {
-        // 首先检查是否悬停在端点上
-        const endpointInfo = checkEndpointAtMouse(event);
-        if (endpointInfo) {
-          renderer.domElement.style.cursor = 'crosshair';
-          return;
-        }
-        
-        const hoveredShape = checkObjectAtMouse(event);
-        
-        if (hoveredShape && hoveredShape === geometryStore.selectedShapeId) {
-          renderer.domElement.style.cursor = 'grab';
-        } else {
-          renderer.domElement.style.cursor = 'default';
-        }
-      }
-
-      if (!stateRef.current.isMouseDown) return;
-
-      const deltaX = event.clientX - stateRef.current.mouseX;
-      const deltaY = event.clientY - stateRef.current.mouseY;
-
-      if (stateRef.current.isDraggingEndpoint && stateRef.current.draggedLineId && stateRef.current.draggedEndpoint && stateRef.current.dragStartEndpointPos) {
-        // 处理端点拖拽
-        const selectedShape = geometryStore.selectedShape;
-        if (selectedShape && selectedShape.type === 'lineSegment') {
-          const lineShape = selectedShape as LineSegment;
-          const vertexId = stateRef.current.draggedEndpoint === 'start' ? lineShape.startVertexId : lineShape.endVertexId;
-          const vertex = geometryStore.getVertexById(vertexId);
-          
-          if (vertex) {
-            // 使用线段的位置作为平面参考点，避免累积误差
-            const linePosition = new THREE.Vector3(
-              selectedShape.position.x,
-              selectedShape.position.y,
-              selectedShape.position.z
-            );
-            const currentWorldPos = screenToWorldForEndpoint(event.clientX, event.clientY, linePosition);
-            
-            if (currentWorldPos) {
-              // 更新顶点位置
-              geometryStore.updateVertex(vertexId, {
-                x: currentWorldPos.x,
-                y: currentWorldPos.y,
-                z: currentWorldPos.z
-              });
-            }
-          }
-        }
-      } else if (stateRef.current.isRotatingObject && geometryStore.selectedShapeId && stateRef.current.dragStartObjectRotation && stateRef.current.rotationAxis) {
-        const rotationSensitivity = 0.01;
-        
-        const totalMouseDeltaX = (event.clientX - stateRef.current.startMouseX) * rotationSensitivity;
-        const totalMouseDeltaY = (event.clientY - stateRef.current.startMouseY) * rotationSensitivity;
-        
-        let rotationDelta: number;
-        switch (stateRef.current.rotationAxis) {
-          case 'x':
-            rotationDelta = totalMouseDeltaY;
-            break;
-          case 'y':
-            rotationDelta = totalMouseDeltaX;
-            break;
-          case 'z':
-            rotationDelta = -totalMouseDeltaX;
-            break;
-          default:
-            rotationDelta = 0;
-        }
-        
-        const newRotation = {
-          ...stateRef.current.dragStartObjectRotation,
-          [stateRef.current.rotationAxis]: stateRef.current.dragStartObjectRotation[stateRef.current.rotationAxis] + rotationDelta
-        };
-        
-        geometryStore.updateShape(geometryStore.selectedShapeId, {
-          rotation: newRotation
-        });
-        
-      } else if (stateRef.current.isRotatingCamera && stateRef.current.cameraRotationStart) {
-        const rotationSensitivity = 0.005;
-        
-        const totalMouseDeltaX = (event.clientX - stateRef.current.startMouseX) * rotationSensitivity;
-        const totalMouseDeltaY = (event.clientY - stateRef.current.startMouseY) * rotationSensitivity;
-        
-        const newAzimuth = stateRef.current.cameraRotationStart.azimuth - totalMouseDeltaX;
-        const newElevation = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, stateRef.current.cameraRotationStart.elevation + totalMouseDeltaY));
-        
-        const distance = 15;
-        const newCameraX = distance * Math.sin(newAzimuth) * Math.cos(newElevation);
-        const newCameraY = distance * Math.sin(newElevation);
-        const newCameraZ = distance * Math.cos(newAzimuth) * Math.cos(newElevation);
-        
-        camera.position.set(newCameraX, newCameraY, newCameraZ);
-        camera.lookAt(0, 0, 0);
-
-      } else if (stateRef.current.isDraggingObject && geometryStore.selectedShapeId && stateRef.current.dragStartWorldPos && stateRef.current.dragStartObjectPos) {
-        const currentWorldPos = screenToWorld(event.clientX, event.clientY);
-        if (currentWorldPos) {
-          const totalDelta = new THREE.Vector3();
-          totalDelta.subVectors(currentWorldPos, stateRef.current.dragStartWorldPos);
-          // 如果是线段，同步更新其引用的顶点位置
-          const selectedShape = geometryStore.selectedShape;
-          if (selectedShape && selectedShape.type === 'lineSegment') {
-            const lineShape = selectedShape as LineSegment;
-            
-            // 使用拖拽开始时记录的顶点位置
-            if (stateRef.current.dragStartVertexPositions) {
-              geometryStore.updateVertex(lineShape.startVertexId, {
-                x: stateRef.current.dragStartVertexPositions.start.x + totalDelta.x,
-                y: stateRef.current.dragStartVertexPositions.start.y + totalDelta.y,
-                z: stateRef.current.dragStartVertexPositions.start.z + totalDelta.z,
-              });
-              
-              geometryStore.updateVertex(lineShape.endVertexId, {
-                x: stateRef.current.dragStartVertexPositions.end.x + totalDelta.x,
-                y: stateRef.current.dragStartVertexPositions.end.y + totalDelta.y,
-                z: stateRef.current.dragStartVertexPositions.end.z + totalDelta.z,
-              });
-            }
-          }
-          else {
-            // 如果是其他形状，更新形状的位置
-            geometryStore.updateShape(geometryStore.selectedShapeId, {
-              position: {
-                x: stateRef.current.dragStartObjectPos.x + totalDelta.x,
-                y: stateRef.current.dragStartObjectPos.y + totalDelta.y,
-                z: stateRef.current.dragStartObjectPos.z + totalDelta.z,
-              }
-            });
-            console.log('update shape position', geometryStore.selectedShapeId);
-          }
-        }
-      } else if (!stateRef.current.isRotatingCamera && !geometryStore.selectedShapeId) {
-        const aspect = width / height;
-        const worldWidth = stateRef.current.frustumSize * aspect;
-        const worldHeight = stateRef.current.frustumSize;
-        
-        const deltaScreenX = (deltaX / width) * worldWidth;
-        const deltaScreenY = (deltaY / height) * worldHeight;
-        
-        const cameraRight = new THREE.Vector3();
-        const cameraUp = new THREE.Vector3();
-        
-        camera.getWorldDirection(cameraRight);
-        cameraRight.cross(camera.up).normalize();
-        
-        cameraUp.crossVectors(cameraRight, camera.getWorldDirection(new THREE.Vector3())).normalize();
-        
-        const moveVector = new THREE.Vector3();
-        moveVector.addScaledVector(cameraRight, -deltaScreenX);
-        moveVector.addScaledVector(cameraUp, deltaScreenY);
-        
-        camera.position.add(moveVector);
-      }
-
-      stateRef.current.mouseX = event.clientX;
-      stateRef.current.mouseY = event.clientY;
+      toolManagerRef.current?.handleMouseMove(event, camera, renderer);
     };
-
     const handleMouseUp = (event: MouseEvent) => {
-      if (stateRef.current.isMouseDown) {
-        const deltaX = Math.abs(event.clientX - stateRef.current.mouseX);
-        const deltaY = Math.abs(event.clientY - stateRef.current.mouseY);
-        
-        if (deltaX < 5 && deltaY < 5) {
-          handleClick(event);
-        }
-      }
-      
-      stateRef.current.isMouseDown = false;
-      stateRef.current.isDraggingObject = false;
-      stateRef.current.isRotatingObject = false;
-      stateRef.current.isRotatingCamera = false;
-      stateRef.current.isDraggingEndpoint = false;
-      stateRef.current.draggedEndpoint = null;
-      stateRef.current.draggedLineId = null;
-      stateRef.current.rotationAxis = null;
-      stateRef.current.dragStartWorldPos = null;
-      stateRef.current.dragStartObjectPos = null;
-      stateRef.current.dragStartObjectRotation = null;
-      stateRef.current.dragStartEndpointPos = null;
-      stateRef.current.dragStartVertexPositions = null;
-      stateRef.current.cameraRotationStart = null;
-      
-      const hoveredShape = checkObjectAtMouse(event);
-      if (hoveredShape && hoveredShape === geometryStore.selectedShapeId) {
-        renderer.domElement.style.cursor = 'grab';
-      } else {
-        renderer.domElement.style.cursor = 'default';
-      }
+      toolManagerRef.current?.handleMouseUp(event, camera, renderer);
     };
-
-    const handleClick = (event: MouseEvent) => {
-      // 首先检查是否点击了端点，如果是则不处理线段选择
-      const endpointInfo = checkEndpointAtMouse(event);
-      if (endpointInfo) {
-        return; // 点击端点时不处理线段选择
-      }
-
-      const raycaster = new THREE.Raycaster();
-      const mouse = new THREE.Vector2();
-
-      const rect = renderer.domElement.getBoundingClientRect();
-      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-      raycaster.setFromCamera(mouse, camera);
-
-      raycaster.params.Line.threshold = 0.1;
-
-      const intersectableObjects: THREE.Object3D[] = [];
-      const idMap = new Map<THREE.Object3D, string>();
-      
-      meshesRef.current.forEach((meshGroup, id) => {
-        if (meshGroup instanceof THREE.Group) {
-          const solidMesh = meshGroup.children.find(child => 
-            child instanceof THREE.Mesh && 
-            !(child.geometry instanceof THREE.CircleGeometry || child.geometry instanceof THREE.RingGeometry)
-          );
-          const line = meshGroup.children.find(child => child instanceof THREE.Line);
-          if (solidMesh) {
-            intersectableObjects.push(solidMesh);
-            idMap.set(solidMesh, id);
-          } else if (line) {
-            intersectableObjects.push(line);
-            idMap.set(line, id);
-          }
-        }
-      });
-
-      const intersects = raycaster.intersectObjects(intersectableObjects, false);
-
-      if (intersects.length > 0) {
-        const closestIntersect = intersects[0];
-        const clickedMesh = closestIntersect.object;
-        const clickedShapeId = idMap.get(clickedMesh);
-
-        if (clickedShapeId) {
-          geometryStore.selectShape(clickedShapeId);
-          
-          const selectedShape = geometryStore.shapes.find(shape => shape.id === clickedShapeId);
-          if (selectedShape) {
-            printRotationDebug(clickedShapeId, selectedShape);
-          }
-        }
-      } else {
-        geometryStore.selectShape(null);
-      }
-    };
-
     const handleContextMenu = (event: MouseEvent) => {
       event.preventDefault();
     };
@@ -1535,11 +958,8 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
   // 键盘事件处理
   const setupKeyboardEvents = (camera: THREE.OrthographicCamera) => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !geometryStore.selectedShapeId) {
-        resetCameraToDefault(camera);
-      }
+      toolManagerRef.current?.handleKeyDown(event, camera);
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   };
