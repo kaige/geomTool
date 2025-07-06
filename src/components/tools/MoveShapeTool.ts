@@ -52,7 +52,9 @@ export class MoveShapeTool extends BaseTool {
   };
 
   onMouseMove = (event: MouseEvent, camera: THREE.OrthographicCamera, renderer: THREE.WebGLRenderer): void => {
-    if (!this.mouseState.isMouseDown || !this.selectionState.isDraggingObject) return;
+    if (!this.mouseState.isMouseDown || !this.selectionState.isDraggingObject) {
+      return;
+    }
 
     const currentWorldPos = this.screenToWorld(event.clientX, event.clientY, camera, renderer);
     if (currentWorldPos && this.selectionState.dragStartWorldPos && this.selectionState.dragStartObjectPos) {

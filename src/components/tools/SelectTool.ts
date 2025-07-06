@@ -35,7 +35,7 @@ export class SelectTool extends BaseTool {
     if (endpointInfo) {
       // 激活线段端点移动工具
       const moveLineEndpointTool = this.toolManager.getTool(ToolType.MOVE_LINE_ENDPOINT) as MoveLineEndpointTool;
-      if (moveLineEndpointTool) {
+      if (moveLineEndpointTool && moveLineEndpointTool.onMouseDown) {
         moveLineEndpointTool.setEndpointInfo(endpointInfo.lineId, endpointInfo.endpoint);
         this.toolManager.activateTool(ToolType.MOVE_LINE_ENDPOINT);
         moveLineEndpointTool.onMouseDown(event, camera, renderer);
@@ -61,7 +61,7 @@ export class SelectTool extends BaseTool {
         if (targetRotationAxis) {
           // 激活旋转工具
           const rotateShapeTool = this.toolManager.getTool(ToolType.ROTATE_SHAPE) as RotateShapeTool;
-          if (rotateShapeTool) {
+          if (rotateShapeTool && rotateShapeTool.onMouseDown) {
             rotateShapeTool.setRotationAxis(targetRotationAxis);
             this.toolManager.activateTool(ToolType.ROTATE_SHAPE);
             rotateShapeTool.onMouseDown(event, camera, renderer);
@@ -69,9 +69,9 @@ export class SelectTool extends BaseTool {
           return;
         } else {
           // 激活移动工具
-          this.toolManager.activateTool(ToolType.MOVE_SHAPE);
           const moveShapeTool = this.toolManager.getTool(ToolType.MOVE_SHAPE);
           if (moveShapeTool && moveShapeTool.onMouseDown) {
+            this.toolManager.activateTool(ToolType.MOVE_SHAPE);
             moveShapeTool.onMouseDown(event, camera, renderer);
           }
           return;
@@ -272,6 +272,8 @@ export class SelectTool extends BaseTool {
 
     const intersectableObjects: THREE.Object3D[] = [];
     const idMap = new Map<THREE.Object3D, string>();
+    const lineObjects: THREE.Line[] = [];
+    const lineIdMap = new Map<THREE.Line, string>();
     
     this.meshesRef.current.forEach((meshGroup, id) => {
       if (meshGroup instanceof THREE.Group) {
@@ -284,23 +286,137 @@ export class SelectTool extends BaseTool {
           intersectableObjects.push(solidMesh);
           idMap.set(solidMesh, id);
         } else if (line) {
-          intersectableObjects.push(line);
-          idMap.set(line, id);
+          // 对于线段，使用更精确的距离检测
+          lineObjects.push(line as THREE.Line);
+          lineIdMap.set(line as THREE.Line, id);
         }
       }
     });
 
+    // 先检测非线段对象
     const intersects = raycaster.intersectObjects(intersectableObjects, false);
     
     if (intersects.length > 0) {
-      // 如果点击距离小于5，则认为是点击了物体
-      const distanceThreshold = 10;
-      if (intersects[0].distance < distanceThreshold) {
-        const clickedMesh = intersects[0].object;
-        return idMap.get(clickedMesh) || null;
+      const clickedMesh = intersects[0].object;
+      const result = idMap.get(clickedMesh) || null;
+      return result;
+    }
+
+    // 对于线段，使用精确的距离检测
+    if (lineObjects.length > 0) {
+      const closestLine = this.findClosestLine(event, camera, renderer, lineObjects, lineIdMap);
+      if (closestLine) {
+        return closestLine;
       }
     }
+
     return null;
+  };
+
+  private findClosestLine = (
+    event: MouseEvent, 
+    camera: THREE.OrthographicCamera, 
+    renderer: THREE.WebGLRenderer,
+    lineObjects: THREE.Line[],
+    lineIdMap: Map<THREE.Line, string>
+  ): string | null => {
+    const mouse = new THREE.Vector2();
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(mouse, camera);
+
+    // 创建射线
+    const ray = raycaster.ray;
+    
+    let closestLineId: string | null = null;
+    let minDistance = Infinity;
+    const distanceThreshold = 0.1; // 线段检测的距离阈值
+
+    lineObjects.forEach(line => {
+      const lineId = lineIdMap.get(line);
+      if (!lineId) return;
+
+      const geometry = line.geometry;
+      if (!geometry) return;
+
+      const positions = geometry.getAttribute('position');
+      if (!positions || positions.count < 2) return;
+
+      // 获取线段的起点和终点（世界坐标）
+      const startPos = new THREE.Vector3(
+        positions.getX(0),
+        positions.getY(0),
+        positions.getZ(0)
+      );
+      const endPos = new THREE.Vector3(
+        positions.getX(1),
+        positions.getY(1),
+        positions.getZ(1)
+      );
+
+      // 应用变换矩阵
+      const worldStartPos = startPos.clone().applyMatrix4(line.matrixWorld);
+      const worldEndPos = endPos.clone().applyMatrix4(line.matrixWorld);
+
+      // 计算射线到线段的最短距离
+      const distance = this.pointToLineSegmentDistance(ray.origin, ray.direction, worldStartPos, worldEndPos);
+      
+      if (distance < minDistance && distance <= distanceThreshold) {
+        minDistance = distance;
+        closestLineId = lineId;
+      }
+    });
+
+    return closestLineId;
+  };
+
+  private pointToLineSegmentDistance = (
+    rayOrigin: THREE.Vector3,
+    rayDirection: THREE.Vector3,
+    lineStart: THREE.Vector3,
+    lineEnd: THREE.Vector3
+  ): number => {
+    // 计算射线到线段的最短距离
+    const lineVector = new THREE.Vector3().subVectors(lineEnd, lineStart);
+    const rayToLineStart = new THREE.Vector3().subVectors(lineStart, rayOrigin);
+    
+    // 计算射线方向与线段方向的叉积
+    const cross = new THREE.Vector3().crossVectors(rayDirection, lineVector);
+    const crossLength = cross.length();
+    
+    if (crossLength === 0) {
+      // 射线与线段平行，计算点到线段的距离
+      return this.pointToLineDistance(rayOrigin, lineStart, lineEnd);
+    }
+    
+    // 计算射线到线段的距离
+    const distance = Math.abs(rayToLineStart.dot(cross)) / crossLength;
+    return distance;
+  };
+
+  private pointToLineDistance = (
+    point: THREE.Vector3,
+    lineStart: THREE.Vector3,
+    lineEnd: THREE.Vector3
+  ): number => {
+    const lineVector = new THREE.Vector3().subVectors(lineEnd, lineStart);
+    const pointToStart = new THREE.Vector3().subVectors(point, lineStart);
+    
+    const lineLength = lineVector.length();
+    if (lineLength === 0) return pointToStart.length();
+    
+    const t = pointToStart.dot(lineVector) / (lineLength * lineLength);
+    const tClamped = Math.max(0, Math.min(1, t));
+    
+    const closestPoint = new THREE.Vector3().addVectors(
+      lineStart,
+      lineVector.clone().multiplyScalar(tClamped)
+    );
+    
+    return point.distanceTo(closestPoint);
   };
 
   private checkEndpointAtMouse = (event: MouseEvent, camera: THREE.OrthographicCamera, renderer: THREE.WebGLRenderer): { lineId: string; endpoint: 'start' | 'end' } | null => {
