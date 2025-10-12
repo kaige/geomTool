@@ -1,14 +1,15 @@
 import { makeAutoObservable, action } from 'mobx';
-import { 
-  GeometryShape, 
-  GeometryShape3D, 
-  LineSegment, 
-  Rectangle, 
-  Circle, 
-  Triangle, 
+import {
+  GeometryShape,
+  GeometryShape3D,
+  LineSegment,
+  Rectangle,
+  Circle,
+  Triangle,
   Polygon,
-  Vertex, 
-  CircleCurve 
+  CircularArc,
+  Vertex,
+  CircleCurve
 } from '../types/GeometryTypes';
 
 export class GeometryStore {
@@ -62,6 +63,11 @@ export class GeometryStore {
           if (circle.centerVertexId === id) {
             shape.hasChanged = true;
           }
+        } else if (shape.type === 'circularArc') {
+          const arc = shape as CircularArc;
+          if (arc.centerVertexId === id || arc.startVertexId === id || arc.endVertexId === id) {
+            shape.hasChanged = true;
+          }
         }
       });
     }
@@ -79,6 +85,9 @@ export class GeometryStore {
       } else if (shape.type === 'circle') {
         const circle = shape as Circle;
         return circle.centerVertexId === id;
+      } else if (shape.type === 'circularArc') {
+        const arc = shape as CircularArc;
+        return arc.centerVertexId === id || arc.startVertexId === id || arc.endVertexId === id;
       }
       return false;
     });
@@ -229,9 +238,9 @@ export class GeometryStore {
     if (positions.length < 3) {
       throw new Error('多边形至少需要3个顶点');
     }
-    
+
     const vertexIds = positions.map(pos => this.addVertex(pos));
-    
+
     const newShape: Polygon = {
       id: this.nextId.toString(),
       type: 'polygon',
@@ -245,6 +254,157 @@ export class GeometryStore {
     };
     this.shapes.push(newShape);
     this.nextId++;
+  }
+
+  // 圆弧相关方法
+  addCircularArc(startPosition: { x: number; y: number; z: number },
+                  endPosition: { x: number; y: number; z: number },
+                  arcPosition: { x: number; y: number; z: number }): void {
+    const arcData = this.calculateCircularArc(startPosition, endPosition, arcPosition);
+
+    const centerVertexId = this.addVertex(arcData.center);
+    const startVertexId = this.addVertex(startPosition);
+    const endVertexId = this.addVertex(endPosition);
+
+    const newShape: CircularArc = {
+      id: this.nextId.toString(),
+      type: 'circularArc',
+      centerVertexId,
+      startVertexId,
+      endVertexId,
+      clockwise: arcData.clockwise,
+      position: { x: 0, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 },
+      scale: { x: 1, y: 1, z: 1 },
+      color: '#0078d4',
+      visible: true,
+      hasChanged: true
+    };
+    this.shapes.push(newShape);
+    this.nextId++;
+  }
+
+  // 计算圆弧的中心点和方向
+  private calculateCircularArc(start: { x: number; y: number; z: number },
+                               end: { x: number; y: number; z: number },
+                               arc: { x: number; y: number; z: number }): {
+    center: { x: number; y: number; z: number };
+    clockwise: boolean;
+  } {
+    // 简化为2D计算（忽略z坐标）
+    const start2D = { x: start.x, y: start.y };
+    const end2D = { x: end.x, y: end.y };
+    const arc2D = { x: arc.x, y: arc.y };
+
+    // 计算两条线段的垂直平分线
+    const mid1 = { x: (start2D.x + arc2D.x) / 2, y: (start2D.y + arc2D.y) / 2 };
+    const mid2 = { x: (arc2D.x + end2D.x) / 2, y: (arc2D.y + end2D.y) / 2 };
+
+    // 计算垂直平分线的方向
+    const dir1 = { x: arc2D.x - start2D.x, y: arc2D.y - start2D.y };
+    const dir2 = { x: end2D.x - arc2D.x, y: end2D.y - arc2D.y };
+
+    // 旋转90度得到垂直方向
+    const perp1 = { x: -dir1.y, y: dir1.x };
+    const perp2 = { x: -dir2.y, y: dir2.x };
+
+    // 求两条垂直平分线的交点（圆心）
+    const center = this.calculateLineIntersection(
+      mid1, perp1,
+      mid2, perp2
+    );
+
+    // 判断方向：使用叉积判断
+    const v1 = { x: start2D.x - center.x, y: start2D.y - center.y };
+    const v2 = { x: arc2D.x - center.x, y: arc2D.y - center.y };
+    const cross = v1.x * v2.y - v1.y * v2.x;
+    const clockwise = cross < 0;
+
+    return {
+      center: { x: center.x, y: center.y, z: 0 },
+      clockwise
+    };
+  }
+
+  // 计算两条直线的交点
+  private calculateLineIntersection(p1: { x: number; y: number }, d1: { x: number; y: number },
+                                   p2: { x: number; y: number }, d2: { x: number; y: number }): { x: number; y: number } {
+    const det = d1.x * d2.y - d1.y * d2.x;
+    if (Math.abs(det) < 1e-10) {
+      // 平行或重合，返回中点
+      return {
+        x: (p1.x + p2.x) / 2,
+        y: (p1.y + p2.y) / 2
+      };
+    }
+
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const t1 = (dx * d2.y - dy * d2.x) / det;
+
+    return {
+      x: p1.x + t1 * d1.x,
+      y: p1.y + t1 * d1.y
+    };
+  }
+
+  // 更新圆弧的端点位置
+  updateArcEndpoint(arcId: string, endpoint: 'start' | 'end', position: { x: number; y: number; z: number }): void {
+    const arcIndex = this.shapes.findIndex(shape => shape.id === arcId);
+    if (arcIndex === -1) return;
+
+    const arc = this.shapes[arcIndex] as CircularArc;
+    const vertexId = endpoint === 'start' ? arc.startVertexId : arc.endVertexId;
+    const otherVertexId = endpoint === 'start' ? arc.endVertexId : arc.startVertexId;
+    const centerVertex = this.getVertexById(arc.centerVertexId);
+    const otherVertex = this.getVertexById(otherVertexId);
+
+    if (centerVertex && otherVertex) {
+      // 更新端点位置
+      this.updateVertex(vertexId, position);
+
+      // 重新计算圆弧方向
+      const v1 = { x: otherVertex.position.x - centerVertex.position.x, y: otherVertex.position.y - centerVertex.position.y };
+      const v2 = { x: position.x - centerVertex.position.x, y: position.y - centerVertex.position.y };
+      const cross = v1.x * v2.y - v1.y * v2.x;
+
+      // 更新方向
+      const isStart = endpoint === 'start';
+      const newClockwise = isStart ? cross > 0 : cross < 0;
+
+      if (arc.clockwise !== newClockwise) {
+        this.updateShape(arcId, { clockwise: newClockwise } as Partial<CircularArc>);
+      }
+    }
+  }
+
+  // 更新圆弧半径（保持中心点不变）
+  updateArcRadius(arcId: string, scale: number): void {
+    const arcIndex = this.shapes.findIndex(shape => shape.id === arcId);
+    if (arcIndex === -1) return;
+
+    const arc = this.shapes[arcIndex] as CircularArc;
+    const centerVertex = this.getVertexById(arc.centerVertexId);
+    const startVertex = this.getVertexById(arc.startVertexId);
+    const endVertex = this.getVertexById(arc.endVertexId);
+
+    if (centerVertex && startVertex && endVertex) {
+      // 计算新的端点位置
+      const newStartPos = {
+        x: centerVertex.position.x + (startVertex.position.x - centerVertex.position.x) * scale,
+        y: centerVertex.position.y + (startVertex.position.y - centerVertex.position.y) * scale,
+        z: centerVertex.position.z + (startVertex.position.z - centerVertex.position.z) * scale
+      };
+
+      const newEndPos = {
+        x: centerVertex.position.x + (endVertex.position.x - centerVertex.position.x) * scale,
+        y: centerVertex.position.y + (endVertex.position.y - centerVertex.position.y) * scale,
+        z: centerVertex.position.z + (endVertex.position.z - centerVertex.position.z) * scale
+      };
+
+      this.updateVertex(arc.startVertexId, newStartPos);
+      this.updateVertex(arc.endVertexId, newEndPos);
+    }
   }
 
   // 通用形状管理方法

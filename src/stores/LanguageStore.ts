@@ -61,6 +61,7 @@ class LanguageStore {
       cone: 'Cone',
       torus: 'Torus',
       lineSegment: 'Line Segment',
+      circularArc: 'Circular Arc',
       deleteSelected: 'Delete Selected',
       clearAll: 'Clear All',
       shapeList: 'Shape List',

@@ -11,6 +11,7 @@ export interface Translations {
   cone: string;
   torus: string;
   lineSegment: string;
+  circularArc: string;
   deleteSelected: string;
   clearAll: string;
   shapeList: string;
@@ -103,6 +104,7 @@ class LanguageService {
       cone: 'Cone',
       torus: 'Torus',
       lineSegment: 'Line Segment',
+      circularArc: 'Circular Arc',
       deleteSelected: 'Delete Selected',
       clearAll: 'Clear All',
       shapeList: 'Shape List',

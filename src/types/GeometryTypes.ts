@@ -59,8 +59,16 @@ export interface Polygon extends BaseGeometryShape {
   vertexIds: string[]; // 多个顶点的ID
 }
 
+export interface CircularArc extends BaseGeometryShape {
+  type: 'circularArc';
+  centerVertexId: string;
+  startVertexId: string;
+  endVertexId: string;
+  clockwise: boolean; // 是否顺时针方向
+}
+
 // 联合类型，包含所有几何形状
-export type GeometryShape = GeometryShape3D | LineSegment | Rectangle | Circle | Triangle | Polygon;
+export type GeometryShape = GeometryShape3D | LineSegment | Rectangle | Circle | Triangle | Polygon | CircularArc;
 
 // 几何存储的完整状态
 export interface GeometryState {

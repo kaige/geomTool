@@ -2,9 +2,12 @@ import React, { useRef, useEffect, useCallback } from 'react';
 import { observer } from 'mobx-react';
 import * as THREE from 'three';
 import { geometryStore } from '../stores/GeometryStore';
-import { GeometryShape, GeometryShape3D, LineSegment, Rectangle, Circle, Triangle, Polygon } from '../types/GeometryTypes';
-import { MouseState, CameraState, SelectionState, LineEndpointState, ToolType } from '../types/ToolTypes';
+import { GeometryShape, GeometryShape3D, LineSegment, Rectangle, Circle, Triangle, Polygon, CircularArc } from '../types/GeometryTypes';
+import { MouseState, CameraState, SelectionState, LineEndpointState, ArcEndpointState, ArcCreationState, ToolType } from '../types/ToolTypes';
 import { ToolManager } from './tools/ToolManager';
+
+// Global tool manager reference
+export let globalToolManager: ToolManager | null = null;
 
 // 调试开关
 const DEBUG_SHOW_FACES_VISIBILITY_BY_COLOR = false;
@@ -116,6 +119,163 @@ function createLineEndpoints(
   return { startPoint, endPoint };
 }
 
+// 创建圆弧端点标记的工具函数
+function createArcEndpoints(
+  centerPos: THREE.Vector3,
+  startPos: THREE.Vector3,
+  endPos: THREE.Vector3,
+  meshGroup: THREE.Group,
+  isSelected: boolean = false
+): { centerPoint: THREE.Mesh; startPoint: THREE.Mesh; endPoint: THREE.Mesh } | null {
+  if (!isSelected) return null;
+
+  const circleR = 0.05;
+  const ringInnerR = circleR * 0.9;
+  const ringOuterR = circleR;
+  const numOfSegments = 16;
+  const circleRenderOrder = 10;
+  const ringRenderOrder = 11;
+
+  // 创建实心圆的几何体（使用CircleGeometry）
+  const circleGeometry = new THREE.CircleGeometry(circleR, numOfSegments);
+
+  // 为每个点创建独立的材质实例
+  const centerCircleMaterial = new THREE.MeshBasicMaterial({
+    color: 0x00ff00, // 绿色表示圆心
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 0.95,
+    depthTest: false,
+    depthWrite: false
+  });
+
+  const startCircleMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff, // 白色表示起点
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 0.95,
+    depthTest: false,
+    depthWrite: false
+  });
+
+  const endCircleMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff, // 白色表示终点
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 0.95,
+    depthTest: false,
+    depthWrite: false
+  });
+
+  // 创建圆心标记
+  const centerPoint = new THREE.Mesh(circleGeometry, centerCircleMaterial);
+  centerPoint.position.copy(centerPos);
+  centerPoint.renderOrder = circleRenderOrder;
+  meshGroup.add(centerPoint);
+
+  // 创建起点标记
+  const startPoint = new THREE.Mesh(circleGeometry, startCircleMaterial);
+  startPoint.position.copy(startPos);
+  startPoint.renderOrder = circleRenderOrder;
+  meshGroup.add(startPoint);
+
+  // 创建终点标记 - 使用独立的几何体和材质
+  const endCircleGeometry = new THREE.CircleGeometry(circleR, numOfSegments);
+  const endPoint = new THREE.Mesh(endCircleGeometry, endCircleMaterial);
+  endPoint.position.copy(endPos);
+  endPoint.renderOrder = circleRenderOrder;
+  meshGroup.add(endPoint);
+
+  // 创建边缘线（使用RingGeometry）
+  const ringGeometry = new THREE.RingGeometry(ringInnerR, ringOuterR, numOfSegments);
+
+  // 为每个边缘创建独立的材质实例
+  const centerRingMaterial = new THREE.MeshBasicMaterial({
+    color: 0x00aa00, // 深绿色，与圆心点一致
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 1.0,
+    depthTest: false,
+    depthWrite: false
+  });
+
+  const startRingMaterial = new THREE.MeshBasicMaterial({
+    color: 0xff6b35, // 深橙色，与选中状态一致
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 1.0,
+    depthTest: false,
+    depthWrite: false
+  });
+
+  const endRingMaterial = new THREE.MeshBasicMaterial({
+    color: 0xff6b35, // 深橙色，与选中状态一致
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 1.0,
+    depthTest: false,
+    depthWrite: false
+  });
+
+  // 创建圆心边缘
+  const centerRing = new THREE.Mesh(ringGeometry, centerRingMaterial);
+  centerRing.position.copy(centerPos);
+  centerRing.renderOrder = ringRenderOrder;
+  meshGroup.add(centerRing);
+
+  // 创建起点边缘
+  const startRing = new THREE.Mesh(ringGeometry, startRingMaterial);
+  startRing.position.copy(startPos);
+  startRing.renderOrder = ringRenderOrder;
+  meshGroup.add(startRing);
+
+  // 创建终点边缘 - 使用独立的几何体和材质
+  const endRingGeometry = new THREE.RingGeometry(ringInnerR, ringOuterR, numOfSegments);
+  const endRing = new THREE.Mesh(endRingGeometry, endRingMaterial);
+  endRing.position.copy(endPos);
+  endRing.renderOrder = ringRenderOrder;
+  meshGroup.add(endRing);
+
+  return { centerPoint, startPoint, endPoint };
+}
+
+// 更新圆弧端点标记的工具函数
+function updateArcEndpoints(
+  meshGroup: THREE.Group,
+  centerPos: THREE.Vector3,
+  startPos: THREE.Vector3,
+  endPos: THREE.Vector3,
+  isSelected: boolean
+): void {
+  // 移除现有的端点标记（包括实心圆和边缘线）
+  const childrenToRemove: THREE.Object3D[] = [];
+  meshGroup.children.forEach(child => {
+    if (child instanceof THREE.Mesh &&
+        (child.geometry instanceof THREE.CircleGeometry || child.geometry instanceof THREE.RingGeometry)) {
+      childrenToRemove.push(child);
+    }
+  });
+
+  // 清理要移除的对象
+  childrenToRemove.forEach(child => {
+    const mesh = child as THREE.Mesh;
+    if (mesh.geometry) mesh.geometry.dispose();
+    if (mesh.material) {
+      if (Array.isArray(mesh.material)) {
+        mesh.material.forEach(material => material.dispose());
+      } else {
+        mesh.material.dispose();
+      }
+    }
+    meshGroup.remove(child);
+  });
+
+  // 如果被选中，创建新的端点标记
+  if (isSelected) {
+    createArcEndpoints(centerPos, startPos, endPos, meshGroup, true);
+  }
+}
+
 // 更新线段端点标记的工具函数
 function updateLineEndpoints(
   meshGroup: THREE.Group,
@@ -170,6 +330,63 @@ function updateAllLineEndpointsDirection(camera: THREE.Camera, meshes: Map<strin
       }
     }
   });
+}
+
+// 创建默认圆弧几何体的函数
+function createDefaultArcGeometry(): THREE.BufferGeometry {
+  const points: THREE.Vector3[] = [];
+  const radius = 1;
+  const startAngle = 0;
+  const endAngle = Math.PI;
+  const numPoints = 32;
+
+  for (let i = 0; i <= numPoints; i++) {
+    const angle = startAngle + (endAngle - startAngle) * (i / numPoints);
+    const x = radius * Math.cos(angle);
+    const y = radius * Math.sin(angle);
+    const z = 0;
+    points.push(new THREE.Vector3(x, y, z));
+  }
+
+  return new THREE.BufferGeometry().setFromPoints(points);
+}
+
+// 创建圆弧几何体的函数
+function createArcGeometry(
+  center: { x: number; y: number; z: number },
+  start: { x: number; y: number; z: number },
+  end: { x: number; y: number; z: number },
+  clockwise: boolean
+): THREE.BufferGeometry {
+  const points: THREE.Vector3[] = [];
+  const numPoints = 32;
+
+  // 计算半径和角度
+  const radius = Math.sqrt(
+    Math.pow(start.x - center.x, 2) + Math.pow(start.y - center.y, 2)
+  );
+  const startAngle = Math.atan2(start.y - center.y, start.x - center.x);
+  const endAngle = Math.atan2(end.y - center.y, end.x - center.x);
+
+  // 计算角度步长
+  let angleDiff = endAngle - startAngle;
+  if (clockwise) {
+    if (angleDiff > 0) angleDiff -= 2 * Math.PI;
+  } else {
+    if (angleDiff < 0) angleDiff += 2 * Math.PI;
+  }
+  const angleStep = angleDiff / numPoints;
+
+  // 生成圆弧点
+  for (let i = 0; i <= numPoints; i++) {
+    const angle = startAngle + angleStep * i;
+    const x = center.x + radius * Math.cos(angle);
+    const y = center.y + radius * Math.sin(angle);
+    const z = 0;
+    points.push(new THREE.Vector3(x, y, z));
+  }
+
+  return new THREE.BufferGeometry().setFromPoints(points);
 }
 
 // 创建几何体
@@ -307,6 +524,20 @@ const createGeometry = (shape: GeometryShape): THREE.BufferGeometry => {
       polygonGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
       return polygonGeometry;
     }
+    case 'circularArc': {
+      // 圆弧几何体 - 根据实际顶点位置创建
+      const arcShape = shape as CircularArc;
+      const centerVertex = geometryStore.getVertexById(arcShape.centerVertexId);
+      const startVertex = geometryStore.getVertexById(arcShape.startVertexId);
+      const endVertex = geometryStore.getVertexById(arcShape.endVertexId);
+
+      if (!centerVertex || !startVertex || !endVertex) {
+        console.warn('圆弧顶点未找到，使用默认圆弧');
+        return createDefaultArcGeometry();
+      }
+
+      return createArcGeometry(centerVertex.position, startVertex.position, endVertex.position, arcShape.clockwise);
+    }
     default:
       return new THREE.BoxGeometry(1, 1, 1);
   }
@@ -409,6 +640,13 @@ function hasVerticesChanged(shape: GeometryShape): boolean {
       const centerVertex = geometryStore.getVertexById(circleShape.centerVertexId);
       const curve = geometryStore.getCurveById(circleShape.curveId);
       return centerVertex?.hasChanged || curve?.hasChanged || false;
+    }
+    case 'circularArc': {
+      const arcShape = shape as CircularArc;
+      const centerVertex = geometryStore.getVertexById(arcShape.centerVertexId);
+      const startVertex = geometryStore.getVertexById(arcShape.startVertexId);
+      const endVertex = geometryStore.getVertexById(arcShape.endVertexId);
+      return centerVertex?.hasChanged || startVertex?.hasChanged || endVertex?.hasChanged || false;
     }
     default:
       return false;
@@ -727,6 +965,21 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
     dragStartEndpointPos: null,
     dragStartVertexPositions: null,
   });
+  const arcEndpointState = useRef<ArcEndpointState>({
+    isDraggingEndpoint: false,
+    draggedEndpoint: null,
+    draggedArcId: null,
+    dragStartEndpointPos: null,
+    dragStartVertexPositions: null,
+  });
+  const arcCreationState = useRef<ArcCreationState>({
+    isCreatingArc: false,
+    step: null,
+    startPoint: null,
+    endPoint: null,
+    arcPoint: null,
+    tempArcId: null,
+  });
   // 用于防止updateScene函数重复执行，避免在更新过程中触发新的更新
   // 这是一个防重复执行的锁
   // 当 updateScene 函数正在执行时，将其设置为 true
@@ -751,8 +1004,11 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       cameraState.current,
       selectionState.current,
       lineEndpointState.current,
+      arcEndpointState.current,
+      arcCreationState.current,
       meshesRef
     );
+    globalToolManager = toolManagerRef.current;
   }
 
   // 初始化主场景
@@ -877,13 +1133,38 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
       meshesRef.current.forEach((meshGroup) => {
         if (meshGroup instanceof THREE.Group) {
           meshGroup.children.forEach(child => {
-            if (child instanceof THREE.Mesh && 
+            if (child instanceof THREE.Mesh &&
                 (child.geometry instanceof THREE.CircleGeometry || child.geometry instanceof THREE.RingGeometry)) {
               renderer.render(child, camera);
             }
           });
         }
       });
+
+      // 渲染临时几何体（如圆弧创建时的临时线条和圆弧）
+      if (toolManagerRef.current?.currentTool) {
+        const currentTool = toolManagerRef.current.currentTool;
+        // 检查是否是CircularArcTool并且有getTempGeometry方法
+        if (currentTool && typeof (currentTool as any).getTempGeometry === 'function') {
+          const tempGeometry = (currentTool as any).getTempGeometry();
+          if (tempGeometry) {
+            // 渲染临时线条
+            if (tempGeometry.line && tempGeometry.line instanceof THREE.Line) {
+              renderer.render(tempGeometry.line, camera);
+            }
+            // 渲染临时圆弧
+            if (tempGeometry.arc && tempGeometry.arc instanceof THREE.Line) {
+              renderer.render(tempGeometry.arc, camera);
+            }
+
+            // 渲染临时虚线
+            if (tempGeometry.dottedLine && tempGeometry.dottedLine instanceof THREE.Line) {
+              renderer.render(tempGeometry.dottedLine, camera);
+            }
+          }
+        }
+      }
+
       renderer.autoClear = true;
       
       // 同步坐标轴相机视角
@@ -1065,9 +1346,9 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
         geometry.userData.camera.updateMatrix();
         geometry.userData.camera.updateMatrixWorld(true);
         
-        // 对于线段，使用THREE.Line渲染
-        if (shape.type === 'lineSegment') {
-          const lineMaterial = new THREE.LineBasicMaterial({ 
+        // 对于线段和圆弧，使用THREE.Line渲染
+        if (shape.type === 'lineSegment' || shape.type === 'circularArc') {
+          const lineMaterial = new THREE.LineBasicMaterial({
             color: shape.color,
             linewidth: 2,
             depthTest: true, // 启用深度测试
@@ -1077,11 +1358,37 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
           // 设置较低的渲染顺序，确保线段在端点标记下面
           line.renderOrder = 0;
           meshGroup.add(line);
-          
-          // 为线段添加端点标记（如果被选中）
+
+          // 为线段/圆弧添加端点标记（如果被选中）
           const isSelected = geometryStore.selectedShapeId === shape.id;
           if (isSelected) {
-            createLineEndpoints(geometry, meshGroup as THREE.Group, true);
+            if (shape.type === 'lineSegment') {
+              createLineEndpoints(geometry, meshGroup as THREE.Group, true);
+            } else if (shape.type === 'circularArc') {
+              const arcShape = shape as CircularArc;
+              const centerVertex = geometryStore.getVertexById(arcShape.centerVertexId);
+              const startVertex = geometryStore.getVertexById(arcShape.startVertexId);
+              const endVertex = geometryStore.getVertexById(arcShape.endVertexId);
+
+              if (centerVertex && startVertex && endVertex) {
+                const centerPos = new THREE.Vector3(
+                  centerVertex.position.x,
+                  centerVertex.position.y,
+                  centerVertex.position.z
+                );
+                const startPos = new THREE.Vector3(
+                  startVertex.position.x,
+                  startVertex.position.y,
+                  startVertex.position.z
+                );
+                const endPos = new THREE.Vector3(
+                  endVertex.position.x,
+                  endVertex.position.y,
+                  endVertex.position.z
+                );
+                createArcEndpoints(centerPos, startPos, endPos, meshGroup as THREE.Group, true);
+              }
+            }
           }
         } else {
           // 对于其他几何体，使用原有的Mesh渲染
@@ -1154,9 +1461,9 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
             newGeometry.userData.camera.updateMatrix();
             newGeometry.userData.camera.updateMatrixWorld(true);
             
-            // 对于线段，使用THREE.Line渲染
-            if (shape.type === 'lineSegment') {
-              const lineMaterial = new THREE.LineBasicMaterial({ 
+            // 对于线段和圆弧，使用THREE.Line渲染
+            if (shape.type === 'lineSegment' || shape.type === 'circularArc') {
+              const lineMaterial = new THREE.LineBasicMaterial({
                 color: geometryStore.selectedShapeId === shape.id ? 0xff6b35 : parseInt(shape.color.replace('#', '0x')),
                 linewidth: 2,
                 depthTest: true,
@@ -1165,10 +1472,36 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
               const line = new THREE.Line(newGeometry, lineMaterial);
               line.renderOrder = 0;
               meshGroup.add(line);
-              
-              // 为线段添加端点标记（如果被选中）
+
+              // 为线段/圆弧添加端点标记（如果被选中）
               const isSelected = geometryStore.selectedShapeId === shape.id;
-              updateLineEndpoints(meshGroup as THREE.Group, newGeometry, isSelected);
+              if (shape.type === 'lineSegment') {
+                updateLineEndpoints(meshGroup as THREE.Group, newGeometry, isSelected);
+              } else if (shape.type === 'circularArc') {
+                const arcShape = shape as CircularArc;
+                const centerVertex = geometryStore.getVertexById(arcShape.centerVertexId);
+                const startVertex = geometryStore.getVertexById(arcShape.startVertexId);
+                const endVertex = geometryStore.getVertexById(arcShape.endVertexId);
+
+                if (centerVertex && startVertex && endVertex) {
+                  const centerPos = new THREE.Vector3(
+                    centerVertex.position.x,
+                    centerVertex.position.y,
+                    centerVertex.position.z
+                  );
+                  const startPos = new THREE.Vector3(
+                    startVertex.position.x,
+                    startVertex.position.y,
+                    startVertex.position.z
+                  );
+                  const endPos = new THREE.Vector3(
+                    endVertex.position.x,
+                    endVertex.position.y,
+                    endVertex.position.z
+                  );
+                  updateArcEndpoints(meshGroup as THREE.Group, centerPos, startPos, endPos, isSelected);
+                }
+              }
             } else {
               // 对于其他几何体，使用原有的Mesh渲染
               const edges = new CustomEdgesGeometry(newGeometry);
@@ -1197,8 +1530,8 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
             const solidMesh = currentMesh.children.find(child => child instanceof THREE.Mesh) as THREE.Mesh;
             const line = currentMesh.children.find(child => child instanceof THREE.Line) as THREE.Line;
             
-            if (shape.type === 'lineSegment' && line) {
-              // 线段需要更新材质颜色（如果选中状态改变）或位置（如果变换改变）
+            if ((shape.type === 'lineSegment' || shape.type === 'circularArc') && line) {
+              // 线段/圆弧需要更新材质颜色（如果选中状态改变）或位置（如果变换改变）
               if (shape.hasSelectionChanged || isXformOrVisbilityChanged || verticesChanged) {
                 if (shape.hasSelectionChanged) {
                   const lineMaterial = line.material as THREE.LineBasicMaterial;
@@ -1207,10 +1540,36 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
                   lineMaterial.depthTest = true;
                   lineMaterial.depthWrite = true;
                 }
-                
+
                 // 更新端点标记
                 const isSelected = geometryStore.selectedShapeId === shape.id;
-                updateLineEndpoints(meshGroup as THREE.Group, line.geometry, isSelected);
+                if (shape.type === 'lineSegment') {
+                  updateLineEndpoints(meshGroup as THREE.Group, line.geometry, isSelected);
+                } else if (shape.type === 'circularArc') {
+                  const arcShape = shape as CircularArc;
+                  const centerVertex = geometryStore.getVertexById(arcShape.centerVertexId);
+                  const startVertex = geometryStore.getVertexById(arcShape.startVertexId);
+                  const endVertex = geometryStore.getVertexById(arcShape.endVertexId);
+
+                  if (centerVertex && startVertex && endVertex) {
+                    const centerPos = new THREE.Vector3(
+                      centerVertex.position.x,
+                      centerVertex.position.y,
+                      centerVertex.position.z
+                    );
+                    const startPos = new THREE.Vector3(
+                      startVertex.position.x,
+                      startVertex.position.y,
+                      startVertex.position.z
+                    );
+                    const endPos = new THREE.Vector3(
+                      endVertex.position.x,
+                      endVertex.position.y,
+                      endVertex.position.z
+                    );
+                    updateArcEndpoints(meshGroup as THREE.Group, centerPos, startPos, endPos, isSelected);
+                  }
+                }
               }
             } else if (solidMesh && solidMesh.geometry) {
               if (isXformOrVisbilityChanged){

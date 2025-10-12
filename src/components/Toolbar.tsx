@@ -11,6 +11,8 @@ import { GeometryShape } from '../types/GeometryTypes';
 import { languageStore } from '../stores/LanguageStore';
 import { LanguageSelector } from './LanguageSelector';
 import { CustomIcon } from './CustomIcon';
+import { globalToolManager } from './ThreeCanvas';
+import { ToolType } from '../types/ToolTypes';
 
 export const Toolbar: React.FC = observer(() => {
   const addShape = (type: GeometryShape['type']) => {
@@ -65,6 +67,12 @@ export const Toolbar: React.FC = observer(() => {
   const deleteSelected = () => {
     if (geometryStore.selectedShapeId) {
       geometryStore.removeShape(geometryStore.selectedShapeId);
+    }
+  };
+
+  const activateCircularArcTool = () => {
+    if (globalToolManager) {
+      globalToolManager.activateTool(ToolType.CREATE_CIRCULAR_ARC);
     }
   };
 
@@ -226,6 +234,12 @@ export const Toolbar: React.FC = observer(() => {
                   onRenderIcon={() => <CustomIcon name="line" size={36} />}
                   text={languageStore.t.lineSegment || "线段"}
                   onClick={() => addShape('lineSegment')}
+                  styles={ribbonButtonStyle}
+                />
+                <CommandBarButton
+                  onRenderIcon={() => <CustomIcon name="circle" size={36} />}
+                  text={languageStore.t.circularArc || "圆弧"}
+                  onClick={activateCircularArcTool}
                   styles={ribbonButtonStyle}
                 />
               </Stack>

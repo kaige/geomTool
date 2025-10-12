@@ -53,6 +53,25 @@ export interface LineEndpointState {
   dragStartVertexPositions: { start: { x: number; y: number; z: number }; end: { x: number; y: number; z: number } } | null;
 }
 
+// 圆弧端点拖拽状态接口
+export interface ArcEndpointState {
+  isDraggingEndpoint: boolean;
+  draggedEndpoint: 'start' | 'end' | null;
+  draggedArcId: string | null;
+  dragStartEndpointPos: { x: number; y: number; z: number } | null;
+  dragStartVertexPositions: { center: { x: number; y: number; z: number }; start: { x: number; y: number; z: number }; end: { x: number; y: number; z: number } } | null;
+}
+
+// 圆弧创建状态接口
+export interface ArcCreationState {
+  isCreatingArc: boolean;
+  step: 'pick_start' | 'pick_end' | 'pick_arc_point' | null;
+  startPoint: { x: number; y: number; z: number } | null;
+  endPoint: { x: number; y: number; z: number } | null;
+  arcPoint: { x: number; y: number; z: number } | null;
+  tempArcId: string | null;
+}
+
 // 工具类型枚举
 export enum ToolType {
   SELECT = 'select',
@@ -68,7 +87,10 @@ export enum ToolType {
   CREATE_RECTANGLE = 'create_rectangle',
   CREATE_CIRCLE = 'create_circle',
   CREATE_TRIANGLE = 'create_triangle',
-  CREATE_POLYGON = 'create_polygon'
+  CREATE_POLYGON = 'create_polygon',
+  CREATE_CIRCULAR_ARC = 'create_circular_arc',
+  MOVE_ARC_ENDPOINT = 'move_arc_endpoint',
+  MOVE_ARC = 'move_arc'
 }
 
 // 工具管理器接口
