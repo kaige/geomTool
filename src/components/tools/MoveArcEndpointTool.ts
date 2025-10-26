@@ -66,29 +66,22 @@ export class MoveArcEndpointTool extends BaseTool {
     const selectedShape = geometryStore.selectedShape;
     if (selectedShape && selectedShape.type === 'circularArc') {
       const arcShape = selectedShape as CircularArc;
-      const centerVertex = geometryStore.getVertexById(arcShape.centerVertexId);
+      const arcCenterVertex = geometryStore.getVertexById(arcShape.centerVertexId);
+      const currentWorldPos = this.screenToWorldForEndpoint(
+        event.clientX,
+        event.clientY,
+        camera,
+        renderer,
+        new THREE.Vector3(arcCenterVertex!.position.x, arcCenterVertex!.position.y, arcCenterVertex!.position.z)
+      );
 
-      if (centerVertex) {
-        const currentWorldPos = this.screenToWorldForEndpoint(
-          event.clientX,
-          event.clientY,
-          camera,
-          renderer,
-          new THREE.Vector3(centerVertex.position.x, centerVertex.position.y, centerVertex.position.z)
+      if (currentWorldPos) {
+        // 使用新的更新方法，传入固定的端点位置
+        geometryStore.updateArcEndpoint(
+          arcShape.id,
+          this.arcEndpointState.draggedEndpoint!,
+          currentWorldPos
         );
-
-        if (currentWorldPos) {
-          // 更新端点位置，让GeometryStore重新计算圆弧
-          geometryStore.updateArcEndpoint(
-            arcShape.id,
-            this.arcEndpointState.draggedEndpoint!,
-            {
-              x: currentWorldPos.x,
-              y: currentWorldPos.y,
-              z: currentWorldPos.z
-            }
-          );
-        }
       }
     }
   };

@@ -588,9 +588,8 @@ export class SelectTool extends BaseTool {
       const clickedMesh = intersects[0].object as THREE.Mesh;
       const meshIndex = endpointMeshes.indexOf(clickedMesh);
 
-      // 对于圆弧，端点的排列可能与线段不同，需要根据实际渲染逻辑判断
-      // 这里假设前两个是端点，后两个可能是中心点或其他
-      const endpoint = (meshIndex === 0 || meshIndex === 2) ? 'start' : 'end';
+      // 0: center point, 1: start point, 2: end point
+      const endpoint = (meshIndex === 1) ? 'start' : 'end';
 
       return {
         arcId: geometryStore.selectedShapeId,

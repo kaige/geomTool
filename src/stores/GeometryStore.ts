@@ -356,40 +356,46 @@ export class GeometryStore {
     const arc = this.shapes[arcIndex] as CircularArc;
     const vertexId = endpoint === 'start' ? arc.startVertexId : arc.endVertexId;
     const otherVertexId = endpoint === 'start' ? arc.endVertexId : arc.startVertexId;
-    const centerVertex = this.getVertexById(arc.centerVertexId);
     const otherVertex = this.getVertexById(otherVertexId);
-    const draggedVertex = this.getVertexById(vertexId);
 
-    if (centerVertex && otherVertex && draggedVertex) {
-      // 计算拖拽前后的位移向量
-      const displacement = {
-        x: position.x - draggedVertex.position.x,
-        y: position.y - draggedVertex.position.y,
-        z: position.z - draggedVertex.position.z
-      };
-
-      // 更新端点位置
+    if (otherVertex) {
+      // 保持另一个端点不变，只更新被拖拽的端点
       this.updateVertex(vertexId, position);
 
-      // 移动中心点，保持与另一端点的相对几何关系
-      const newCenterPos = {
-        x: centerVertex.position.x + displacement.x,
-        y: centerVertex.position.y + displacement.y,
-        z: centerVertex.position.z + displacement.z
+      // 计算新端点和另一个端点之间的中点
+      const midpoint = {
+        x: (position.x + otherVertex.position.x) / 2,
+        y: (position.y + otherVertex.position.y) / 2,
+        z: (position.z + otherVertex.position.z) / 2
       };
-      this.updateVertex(arc.centerVertexId, newCenterPos);
 
-      // 重新计算圆弧方向
-      const v1 = { x: otherVertex.position.x - newCenterPos.x, y: otherVertex.position.y - newCenterPos.y };
-      const v2 = { x: position.x - newCenterPos.x, y: position.y - newCenterPos.y };
-      const cross = v1.x * v2.y - v1.y * v2.x;
+      // 计算弦的向量和长度
+      const chordVector = {
+        x: otherVertex.position.x - position.x,
+        y: otherVertex.position.y - position.y
+      };
+      const chordLength = Math.sqrt(chordVector.x * chordVector.x + chordVector.y * chordVector.y);
 
-      // 更新方向
-      const isStart = endpoint === 'start';
-      const newClockwise = isStart ? cross > 0 : cross < 0;
+      if (chordLength > 0.001) { // 避免除零错误
+        // 计算弦的垂直方向（单位向量）
+        const perpVector = {
+          x: -chordVector.y / chordLength,
+          y: chordVector.x / chordLength
+        };
 
-      if (arc.clockwise !== newClockwise) {
-        this.updateShape(arcId, { clockwise: newClockwise } as Partial<CircularArc>);
+        // 使用固定的弧高比例，创建弧点
+        const arcHeight = chordLength * 0.3; // 弧高为弦长的30%
+        const arcPoint = {
+          x: midpoint.x + perpVector.x * arcHeight,
+          y: midpoint.y + perpVector.y * arcHeight,
+          z: midpoint.z
+        };
+
+        // 使用三点计算新的中心点
+        const newCenterData = this.calculateCircularArc(position, otherVertex.position, arcPoint);
+
+        // 更新中心点位置
+        this.updateVertex(arc.centerVertexId, newCenterData.center);
       }
     }
   }
