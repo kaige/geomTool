@@ -143,4 +143,8 @@ export class MoveArcEndpointTool extends BaseTool {
   onKeyDown(event: KeyboardEvent, camera: THREE.OrthographicCamera): void {
     // 无操作
   }
+
+  updateCursor(renderer: THREE.WebGLRenderer): void {
+    renderer.domElement.style.cursor = 'crosshair';
+  }
 }

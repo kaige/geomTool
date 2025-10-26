@@ -4,6 +4,7 @@ import { geometryStore } from '../../stores/GeometryStore';
 import { MouseState, CameraState, IToolManager, ToolType } from '../../types/ToolTypes';
 import { MoveLineEndpointTool } from './MoveLineEndpointTool';
 import { RotateShapeTool } from './RotateShapeTool';
+import { MoveArcEndpointTool } from './MoveArcEndpointTool';
 
 export class SelectTool extends BaseTool {
   private mouseState: MouseState;
@@ -39,6 +40,19 @@ export class SelectTool extends BaseTool {
         moveLineEndpointTool.setEndpointInfo(endpointInfo.lineId, endpointInfo.endpoint);
         this.toolManager.activateTool(ToolType.MOVE_LINE_ENDPOINT);
         moveLineEndpointTool.onMouseDown(event, camera, renderer);
+      }
+      return;
+    }
+
+    // 检查是否点击了圆弧端点
+    const arcEndpointInfo = this.checkArcEndpointAtMouse(event, camera, renderer);
+    if (arcEndpointInfo) {
+      // 激活圆弧端点移动工具
+      const moveArcEndpointTool = this.toolManager.getTool(ToolType.MOVE_ARC_ENDPOINT) as MoveArcEndpointTool;
+      if (moveArcEndpointTool && moveArcEndpointTool.onMouseDown) {
+        moveArcEndpointTool.setEndpointInfo(arcEndpointInfo.arcId, arcEndpointInfo.endpoint);
+        this.toolManager.activateTool(ToolType.MOVE_ARC_ENDPOINT);
+        moveArcEndpointTool.onMouseDown(event, camera, renderer);
       }
       return;
     }
@@ -105,9 +119,15 @@ export class SelectTool extends BaseTool {
         renderer.domElement.style.cursor = 'crosshair';
         return;
       }
-      
+
+      const arcEndpointInfo = this.checkArcEndpointAtMouse(event, camera, renderer);
+      if (arcEndpointInfo) {
+        renderer.domElement.style.cursor = 'crosshair';
+        return;
+      }
+
       const hoveredShape = this.checkObjectAtMouse(event, camera, renderer);
-      
+
       if (hoveredShape && hoveredShape === geometryStore.selectedShapeId) {
         renderer.domElement.style.cursor = 'grab';
       } else {
@@ -219,6 +239,11 @@ export class SelectTool extends BaseTool {
     const endpointInfo = this.checkEndpointAtMouse(event, camera, renderer);
     if (endpointInfo) {
       return; // 点击端点时不处理线段选择
+    }
+
+    const arcEndpointInfo = this.checkArcEndpointAtMouse(event, camera, renderer);
+    if (arcEndpointInfo) {
+      return; // 点击圆弧端点时不处理形状选择
     }
 
     const raycaster = new THREE.Raycaster();
@@ -522,6 +547,107 @@ export class SelectTool extends BaseTool {
     if (distanceToEnd <= distanceThreshold) {
       return {
         lineId: geometryStore.selectedShapeId,
+        endpoint: 'end'
+      };
+    }
+
+    return null;
+  };
+
+  private checkArcEndpointAtMouse = (event: MouseEvent, camera: THREE.OrthographicCamera, renderer: THREE.WebGLRenderer): { arcId: string; endpoint: 'start' | 'end' } | null => {
+    if (!geometryStore.selectedShapeId) return null;
+
+    const selectedShape = geometryStore.selectedShape;
+    if (!selectedShape || selectedShape.type !== 'circularArc') return null;
+
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+
+    const selectedMeshGroup = this.meshesRef.current.get(geometryStore.selectedShapeId);
+    if (!selectedMeshGroup || !(selectedMeshGroup instanceof THREE.Group)) return null;
+
+    const endpointMeshes: THREE.Mesh[] = [];
+    selectedMeshGroup.children.forEach(child => {
+      if (child instanceof THREE.Mesh &&
+          (child.geometry instanceof THREE.CircleGeometry || child.geometry instanceof THREE.RingGeometry)) {
+        endpointMeshes.push(child);
+      }
+    });
+
+    if (endpointMeshes.length === 0) return null;
+
+    const intersects = raycaster.intersectObjects(endpointMeshes, false);
+
+    if (intersects.length > 0) {
+      const clickedMesh = intersects[0].object as THREE.Mesh;
+      const meshIndex = endpointMeshes.indexOf(clickedMesh);
+
+      // 对于圆弧，端点的排列可能与线段不同，需要根据实际渲染逻辑判断
+      // 这里假设前两个是端点，后两个可能是中心点或其他
+      const endpoint = (meshIndex === 0 || meshIndex === 2) ? 'start' : 'end';
+
+      return {
+        arcId: geometryStore.selectedShapeId,
+        endpoint
+      };
+    }
+
+    // 距离检测作为备用方案
+    const raycasterForDistance = new THREE.Raycaster();
+    raycasterForDistance.setFromCamera(mouse, camera);
+
+    const plane = new THREE.Plane();
+    plane.setFromNormalAndCoplanarPoint(
+      new THREE.Vector3(0, 0, 1),
+      new THREE.Vector3(0, 0, 0)
+    );
+
+    const mouseWorldPos = new THREE.Vector3();
+    raycasterForDistance.ray.intersectPlane(plane, mouseWorldPos);
+
+    if (!mouseWorldPos) return null;
+
+    const line = selectedMeshGroup.children.find(child => child instanceof THREE.Line) as THREE.Line;
+    if (!line || !line.geometry) return null;
+
+    const positions = line.geometry.getAttribute('position');
+    if (!positions || positions.count < 2) return null;
+
+    const startPos = new THREE.Vector3(
+      positions.getX(0),
+      positions.getY(0),
+      positions.getZ(0)
+    );
+    const endPos = new THREE.Vector3(
+      positions.getX(positions.count - 1),
+      positions.getY(positions.count - 1),
+      positions.getZ(positions.count - 1)
+    );
+
+    const worldStartPos = startPos.clone().applyMatrix4(selectedMeshGroup.matrixWorld);
+    const worldEndPos = endPos.clone().applyMatrix4(selectedMeshGroup.matrixWorld);
+
+    const distanceThreshold = 0.2;
+
+    const distanceToStart = mouseWorldPos.distanceTo(worldStartPos);
+    const distanceToEnd = mouseWorldPos.distanceTo(worldEndPos);
+
+    if (distanceToStart <= distanceThreshold) {
+      return {
+        arcId: geometryStore.selectedShapeId,
+        endpoint: 'start'
+      };
+    }
+
+    if (distanceToEnd <= distanceThreshold) {
+      return {
+        arcId: geometryStore.selectedShapeId,
         endpoint: 'end'
       };
     }

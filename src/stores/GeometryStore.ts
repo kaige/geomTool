@@ -358,14 +358,30 @@ export class GeometryStore {
     const otherVertexId = endpoint === 'start' ? arc.endVertexId : arc.startVertexId;
     const centerVertex = this.getVertexById(arc.centerVertexId);
     const otherVertex = this.getVertexById(otherVertexId);
+    const draggedVertex = this.getVertexById(vertexId);
 
-    if (centerVertex && otherVertex) {
+    if (centerVertex && otherVertex && draggedVertex) {
+      // 计算拖拽前后的位移向量
+      const displacement = {
+        x: position.x - draggedVertex.position.x,
+        y: position.y - draggedVertex.position.y,
+        z: position.z - draggedVertex.position.z
+      };
+
       // 更新端点位置
       this.updateVertex(vertexId, position);
 
+      // 移动中心点，保持与另一端点的相对几何关系
+      const newCenterPos = {
+        x: centerVertex.position.x + displacement.x,
+        y: centerVertex.position.y + displacement.y,
+        z: centerVertex.position.z + displacement.z
+      };
+      this.updateVertex(arc.centerVertexId, newCenterPos);
+
       // 重新计算圆弧方向
-      const v1 = { x: otherVertex.position.x - centerVertex.position.x, y: otherVertex.position.y - centerVertex.position.y };
-      const v2 = { x: position.x - centerVertex.position.x, y: position.y - centerVertex.position.y };
+      const v1 = { x: otherVertex.position.x - newCenterPos.x, y: otherVertex.position.y - newCenterPos.y };
+      const v2 = { x: position.x - newCenterPos.x, y: position.y - newCenterPos.y };
       const cross = v1.x * v2.y - v1.y * v2.x;
 
       // 更新方向
