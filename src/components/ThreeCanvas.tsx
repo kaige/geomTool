@@ -17,10 +17,12 @@ const DEBUG_SHOW_NORMALS = false;
 function createLineEndpoints(
   geometry: THREE.BufferGeometry,
   meshGroup: THREE.Group,
-  isSelected: boolean = false
+  isSelected: boolean = false,
+  camera?: THREE.OrthographicCamera
 ): { startPoint: THREE.Mesh; endPoint: THREE.Mesh } | null {
   if (!isSelected) return null;
 
+  
   // 获取线段的起点和终点
   const positions = geometry.getAttribute('position');
   if (!positions || positions.count < 2) return null;
@@ -37,7 +39,14 @@ function createLineEndpoints(
     positions.getZ(1)
   );
 
-  const circleR = 0.05;
+  // 根据相机缩放计算圆圈大小，保持屏幕上的恒定大小
+  const targetScreenSize = 150; // 目标屏幕像素大小（增加到150像素，为原来的3倍）
+  const currentFrustumSize = camera ? camera.top - camera.bottom : 20;
+  const baseFrustumSize = 20; // 基准frustum大小
+  const scaleFactor = currentFrustumSize / baseFrustumSize;
+  const circleR = (targetScreenSize / 500) * scaleFactor; // 调整为世界坐标大小（减少除数以获得更大的圆圈）
+
+  
   const ringInnerR = circleR * 0.9;
   const ringOuterR = circleR;
   const numOfSegments = 16;
@@ -125,11 +134,19 @@ function createArcEndpoints(
   startPos: THREE.Vector3,
   endPos: THREE.Vector3,
   meshGroup: THREE.Group,
-  isSelected: boolean = false
+  isSelected: boolean = false,
+  camera?: THREE.OrthographicCamera
 ): { centerPoint: THREE.Mesh; startPoint: THREE.Mesh; endPoint: THREE.Mesh } | null {
   if (!isSelected) return null;
 
-  const circleR = 0.05;
+  // 根据相机缩放计算圆圈大小，保持屏幕上的恒定大小
+  const targetScreenSize = 150; // 目标屏幕像素大小（增加到150像素，为原来的3倍）
+  const currentFrustumSize = camera ? camera.top - camera.bottom : 20;
+  const baseFrustumSize = 20; // 基准frustum大小
+  const scaleFactor = currentFrustumSize / baseFrustumSize;
+  const circleR = (targetScreenSize / 500) * scaleFactor; // 调整为世界坐标大小（减少除数以获得更大的圆圈）
+
+  
   const ringInnerR = circleR * 0.9;
   const ringOuterR = circleR;
   const numOfSegments = 16;
@@ -316,15 +333,48 @@ function updateLineEndpoints(
 function updateAllLineEndpointsDirection(camera: THREE.Camera, meshes: Map<string, THREE.Object3D>): void {
   meshes.forEach((meshGroup) => {
     if (meshGroup instanceof THREE.Group) {
-      // 检查是否是线段（包含Line对象）
+      // 检查是否是线段或圆弧（包含Line对象）
       const line = meshGroup.children.find(child => child instanceof THREE.Line);
       if (line) {
         // 找到端点标记（CircleGeometry和RingGeometry）
         meshGroup.children.forEach(child => {
-          if (child instanceof THREE.Mesh && 
+          if (child instanceof THREE.Mesh &&
               (child.geometry instanceof THREE.CircleGeometry || child.geometry instanceof THREE.RingGeometry)) {
             // 让端点标记始终面向相机
             child.lookAt(camera.position);
+          }
+        });
+      }
+    }
+  });
+}
+
+// 更新所有端点标记的大小，保持屏幕上的恒定大小
+function updateAllEndpointsScale(camera: THREE.OrthographicCamera, meshes: Map<string, THREE.Object3D>): void {
+  const targetScreenSize = 150; // 目标屏幕像素大小（增加到150像素，为原来的3倍）
+  const currentFrustumSize = camera.top - camera.bottom;
+  const baseFrustumSize = 20; // 基准frustum大小
+  const scaleFactor = currentFrustumSize / baseFrustumSize;
+  const newCircleR = (targetScreenSize / 1000) * scaleFactor;
+
+  meshes.forEach((meshGroup) => {
+    if (meshGroup instanceof THREE.Group) {
+      // 检查是否是线段或圆弧（包含Line对象）
+      const line = meshGroup.children.find(child => child instanceof THREE.Line);
+      if (line) {
+        // 找到端点标记（CircleGeometry和RingGeometry）并更新大小
+        meshGroup.children.forEach(child => {
+          if (child instanceof THREE.Mesh &&
+              (child.geometry instanceof THREE.CircleGeometry || child.geometry instanceof THREE.RingGeometry)) {
+            // 重新创建几何体以更新大小
+            const oldGeometry = child.geometry;
+            if (oldGeometry instanceof THREE.CircleGeometry) {
+              child.geometry = new THREE.CircleGeometry(newCircleR, 16);
+            } else if (oldGeometry instanceof THREE.RingGeometry) {
+              child.geometry = new THREE.RingGeometry(newCircleR * 0.9, newCircleR, 16);
+            }
+            // 释放旧几何体
+            oldGeometry.dispose();
           }
         });
       }
@@ -1117,9 +1167,10 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
   const setupRenderLoop = (renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.OrthographicCamera) => {
     const animate = () => {
       requestAnimationFrame(animate);
-      
-      // 更新线段端点标记的方向
+
+      // 更新线段端点标记的方向和大小
       updateAllLineEndpointsDirection(camera, meshesRef.current);
+      updateAllEndpointsScale(camera, meshesRef.current);
       
       // 渲染主场景
       renderer.setViewport(0, 0, width, height);
