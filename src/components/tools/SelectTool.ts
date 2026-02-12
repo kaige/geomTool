@@ -489,7 +489,7 @@ export class SelectTool extends BaseTool {
       const clickedMesh = intersects[0].object as THREE.Mesh;
       const meshIndex = endpointMeshes.indexOf(clickedMesh);
       
-      const endpoint = (meshIndex === 0 || meshIndex === 2) ? 'start' : 'end';
+      const endpoint = (meshIndex <= 1) ? 'start' : 'end';
       
       return {
         lineId: geometryStore.selectedShapeId,
