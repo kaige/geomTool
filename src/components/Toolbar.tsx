@@ -76,6 +76,12 @@ export const Toolbar: React.FC = observer(() => {
     }
   };
 
+  const activateLineSegmentTool = () => {
+    if (globalToolManager) {
+      globalToolManager.activateTool(ToolType.CREATE_LINE_SEGMENT);
+    }
+  };
+
   const ribbonButtonStyle = {
     root: {
       height: 60,
@@ -233,7 +239,7 @@ export const Toolbar: React.FC = observer(() => {
                 <CommandBarButton
                   onRenderIcon={() => <CustomIcon name="line" size={36} />}
                   text={languageStore.t.lineSegment || "线段"}
-                  onClick={() => addShape('lineSegment')}
+                  onClick={activateLineSegmentTool}
                   styles={ribbonButtonStyle}
                 />
                 <CommandBarButton

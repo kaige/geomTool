@@ -6,6 +6,7 @@ import { MoveLineEndpointTool } from './MoveLineEndpointTool';
 import { CircularArcTool } from './CircularArcTool';
 import { MoveArcEndpointTool } from './MoveArcEndpointTool';
 import { MoveArcTool } from './MoveArcTool';
+import { LineSegmentTool } from './LineSegmentTool';
 import { MouseState, CameraState, SelectionState, LineEndpointState, ArcEndpointState, ArcCreationState } from '../../types/ToolTypes';
 import * as THREE from 'three';
 
@@ -29,6 +30,7 @@ export class ToolManager implements IToolManager {
     this.tools.set(ToolType.CREATE_CIRCULAR_ARC, new CircularArcTool(mouseState, arcCreationState, this));
     this.tools.set(ToolType.MOVE_ARC_ENDPOINT, new MoveArcEndpointTool(mouseState, arcEndpointState, this));
     this.tools.set(ToolType.MOVE_ARC, new MoveArcTool(mouseState, selectionState, this));
+    this.tools.set(ToolType.CREATE_LINE_SEGMENT, new LineSegmentTool(mouseState, this));
 
     // 初始化SelectTool（需要传入this引用）
     this.tools.set(ToolType.SELECT, new SelectTool(mouseState, cameraState, meshesRef, this));

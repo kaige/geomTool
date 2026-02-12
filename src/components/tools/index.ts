@@ -6,4 +6,5 @@ export { MoveLineEndpointTool } from './MoveLineEndpointTool';
 export { CircularArcTool } from './CircularArcTool';
 export { MoveArcEndpointTool } from './MoveArcEndpointTool';
 export { MoveArcTool } from './MoveArcTool';
-export { ToolManager } from './ToolManager'; 
+export { LineSegmentTool } from './LineSegmentTool';
+export { ToolManager } from './ToolManager';
