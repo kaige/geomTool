@@ -361,8 +361,8 @@ export class SelectTool extends BaseTool {
   };
 
   private findClosestLine = (
-    event: MouseEvent, 
-    camera: THREE.OrthographicCamera, 
+    event: MouseEvent,
+    camera: THREE.OrthographicCamera,
     renderer: THREE.WebGLRenderer,
     lineObjects: THREE.Line[],
     lineIdMap: Map<THREE.Line, string>
@@ -377,7 +377,7 @@ export class SelectTool extends BaseTool {
 
     // 创建射线
     const ray = raycaster.ray;
-    
+
     let closestLineId: string | null = null;
     let minDistance = Infinity;
     const distanceThreshold = 0.1; // 线段检测的距离阈值
@@ -392,28 +392,30 @@ export class SelectTool extends BaseTool {
       const positions = geometry.getAttribute('position');
       if (!positions || positions.count < 2) return;
 
-      // 获取线段的起点和终点（世界坐标）
-      const startPos = new THREE.Vector3(
-        positions.getX(0),
-        positions.getY(0),
-        positions.getZ(0)
-      );
-      const endPos = new THREE.Vector3(
-        positions.getX(1),
-        positions.getY(1),
-        positions.getZ(1)
-      );
+      // 检查所有线段（对于圆弧等多段线）
+      for (let i = 0; i < positions.count - 1; i++) {
+        const startPos = new THREE.Vector3(
+          positions.getX(i),
+          positions.getY(i),
+          positions.getZ(i)
+        );
+        const endPos = new THREE.Vector3(
+          positions.getX(i + 1),
+          positions.getY(i + 1),
+          positions.getZ(i + 1)
+        );
 
-      // 应用变换矩阵
-      const worldStartPos = startPos.clone().applyMatrix4(line.matrixWorld);
-      const worldEndPos = endPos.clone().applyMatrix4(line.matrixWorld);
+        // 应用变换矩阵
+        const worldStartPos = startPos.clone().applyMatrix4(line.matrixWorld);
+        const worldEndPos = endPos.clone().applyMatrix4(line.matrixWorld);
 
-      // 计算射线到线段的最短距离
-      const distance = this.pointToLineSegmentDistance(ray.origin, ray.direction, worldStartPos, worldEndPos);
-      
-      if (distance < minDistance && distance <= distanceThreshold) {
-        minDistance = distance;
-        closestLineId = lineId;
+        // 计算射线到线段的最短距离
+        const distance = this.pointToLineSegmentDistance(ray.origin, ray.direction, worldStartPos, worldEndPos);
+
+        if (distance < minDistance && distance <= distanceThreshold) {
+          minDistance = distance;
+          closestLineId = lineId;
+        }
       }
     });
 
