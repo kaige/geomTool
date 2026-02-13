@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { BaseTool } from './BaseTool';
 import { geometryStore } from '../../stores/GeometryStore';
 import { MouseState, CameraState, IToolManager, ToolType } from '../../types/ToolTypes';
+import { CircularArc } from '../../types/GeometryTypes';
 import { MoveLineEndpointTool } from './MoveLineEndpointTool';
 import { RotateShapeTool } from './RotateShapeTool';
 import { MoveArcEndpointTool } from './MoveArcEndpointTool';
@@ -588,13 +589,25 @@ export class SelectTool extends BaseTool {
       const clickedMesh = intersects[0].object as THREE.Mesh;
       const meshIndex = endpointMeshes.indexOf(clickedMesh);
 
-      // 0: center point, 1: start point, 2: end point
-      const endpoint = (meshIndex === 1) ? 'start' : 'end';
+      // Each endpoint marker has 2 meshes (circle + ring): center(0,1), start(2,3), end(4,5)
+      const markerIndex = Math.floor(meshIndex / 2);
 
-      return {
-        arcId: geometryStore.selectedShapeId,
-        endpoint
-      };
+      if (markerIndex === 0) {
+        // Center point clicked - return null so the shape move tool handles it
+        return null;
+      } else if (markerIndex === 1) {
+        // Start point clicked
+        return {
+          arcId: geometryStore.selectedShapeId,
+          endpoint: 'start'
+        };
+      } else {
+        // End point clicked (markerIndex === 2)
+        return {
+          arcId: geometryStore.selectedShapeId,
+          endpoint: 'end'
+        };
+      }
     }
 
     // 距离检测作为备用方案
@@ -612,30 +625,28 @@ export class SelectTool extends BaseTool {
 
     if (!mouseWorldPos) return null;
 
-    const line = selectedMeshGroup.children.find(child => child instanceof THREE.Line) as THREE.Line;
-    if (!line || !line.geometry) return null;
+    // Get arc shape to access center vertex
+    const arcShape = selectedShape as CircularArc;
+    const centerVertex = geometryStore.getVertexById(arcShape.centerVertexId);
+    const startVertex = geometryStore.getVertexById(arcShape.startVertexId);
+    const endVertex = geometryStore.getVertexById(arcShape.endVertexId);
 
-    const positions = line.geometry.getAttribute('position');
-    if (!positions || positions.count < 2) return null;
+    if (!centerVertex || !startVertex || !endVertex) return null;
 
-    const startPos = new THREE.Vector3(
-      positions.getX(0),
-      positions.getY(0),
-      positions.getZ(0)
-    );
-    const endPos = new THREE.Vector3(
-      positions.getX(positions.count - 1),
-      positions.getY(positions.count - 1),
-      positions.getZ(positions.count - 1)
-    );
-
-    const worldStartPos = startPos.clone().applyMatrix4(selectedMeshGroup.matrixWorld);
-    const worldEndPos = endPos.clone().applyMatrix4(selectedMeshGroup.matrixWorld);
+    const centerPos = new THREE.Vector3(centerVertex.position.x, centerVertex.position.y, centerVertex.position.z);
+    const startPos = new THREE.Vector3(startVertex.position.x, startVertex.position.y, startVertex.position.z);
+    const endPos = new THREE.Vector3(endVertex.position.x, endVertex.position.y, endVertex.position.z);
 
     const distanceThreshold = 0.2;
 
-    const distanceToStart = mouseWorldPos.distanceTo(worldStartPos);
-    const distanceToEnd = mouseWorldPos.distanceTo(worldEndPos);
+    const distanceToCenter = mouseWorldPos.distanceTo(centerPos);
+    const distanceToStart = mouseWorldPos.distanceTo(startPos);
+    const distanceToEnd = mouseWorldPos.distanceTo(endPos);
+
+    // Check center point first (return null to trigger shape move)
+    if (distanceToCenter <= distanceThreshold && distanceToCenter < distanceToStart && distanceToCenter < distanceToEnd) {
+      return null;
+    }
 
     if (distanceToStart <= distanceThreshold) {
       return {
