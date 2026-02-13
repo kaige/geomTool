@@ -91,26 +91,41 @@ export class MoveArcEndpointTool extends BaseTool {
         const currentWorldPos = this.screenToWorldForEndpoint(event.clientX, event.clientY, camera, renderer, arcCenterPosition);
 
         if (currentWorldPos) {
-          // Apply snap to the current world position (exclude current arc from snap targets)
-          const snapResult = this.snapManager.findSnapPoint(currentWorldPos, arcShape.id);
-          snappedPos = snapResult.snappedPosition;
+          // Check if Ctrl key is held - if so, slide on circle (preserve radius and center)
+          if (event.ctrlKey) {
+            // For Ctrl+drag, we project onto the circle without snap
+            // to maintain smooth sliding along the arc
+            geometryStore.slideArcEndpointOnCircle(
+              arcShape.id,
+              this.arcEndpointState.draggedEndpoint!,
+              {
+                x: currentWorldPos.x,
+                y: currentWorldPos.y,
+                z: currentWorldPos.z
+              }
+            );
+          } else {
+            // Normal drag: apply snap and recalculate center to preserve radius
+            const snapResult = this.snapManager.findSnapPoint(currentWorldPos, arcShape.id);
+            snappedPos = snapResult.snappedPosition;
 
-          // Use the new update method for arc endpoints
-          geometryStore.updateArcEndpoint(
-            arcShape.id,
-            this.arcEndpointState.draggedEndpoint!,
-            {
-              x: snappedPos.x,
-              y: snappedPos.y,
-              z: snappedPos.z
-            }
-          );
+            // Use the new update method for arc endpoints
+            geometryStore.updateArcEndpoint(
+              arcShape.id,
+              this.arcEndpointState.draggedEndpoint!,
+              {
+                x: snappedPos.x,
+                y: snappedPos.y,
+                z: snappedPos.z
+              }
+            );
+          }
         }
       }
     }
 
-    // Update snap marker visibility
-    if (snappedPos) {
+    // Update snap marker visibility (only for non-Ctrl drag)
+    if (!event.ctrlKey && snappedPos) {
       const worldPos = this.screenToWorldForEndpoint(event.clientX, event.clientY, camera, renderer, new THREE.Vector3(snappedPos.x, snappedPos.y, snappedPos.z));
       if (worldPos) {
         this.snapManager.findSnapPoint(worldPos);
@@ -119,7 +134,7 @@ export class MoveArcEndpointTool extends BaseTool {
         }
       }
     }
-    
+
   };
 
   onMouseUp = (event: MouseEvent, camera: THREE.OrthographicCamera, renderer: THREE.WebGLRenderer): void => {

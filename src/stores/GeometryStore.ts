@@ -426,6 +426,44 @@ export class GeometryStore {
     }
   }
 
+  // 更新圆弧端点沿圆周滑动（保持圆心和半径不变）
+  slideArcEndpointOnCircle(arcId: string, endpoint: 'start' | 'end', position: { x: number; y: number; z: number }): void {
+    const arcIndex = this.shapes.findIndex(shape => shape.id === arcId);
+    if (arcIndex === -1) return;
+
+    const arc = this.shapes[arcIndex] as CircularArc;
+    const vertexId = endpoint === 'start' ? arc.startVertexId : arc.endVertexId;
+    const centerVertex = this.getVertexById(arc.centerVertexId);
+    const otherVertexId = endpoint === 'start' ? arc.endVertexId : arc.startVertexId;
+    const otherVertex = this.getVertexById(otherVertexId);
+
+    if (centerVertex && otherVertex) {
+      // Calculate the radius (distance from center to other endpoint)
+      const radius = Math.sqrt(
+        Math.pow(otherVertex.position.x - centerVertex.position.x, 2) +
+        Math.pow(otherVertex.position.y - centerVertex.position.y, 2)
+      );
+
+      // Calculate direction from center to the desired position
+      const dirX = position.x - centerVertex.position.x;
+      const dirY = position.y - centerVertex.position.y;
+      const dirZ = position.z - centerVertex.position.z;
+      const length = Math.sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ);
+
+      if (length > 0.001) {
+        // Normalize and scale to radius to get the new position on the circle
+        const newPosition = {
+          x: centerVertex.position.x + (dirX / length) * radius,
+          y: centerVertex.position.y + (dirY / length) * radius,
+          z: centerVertex.position.z + (dirZ / length) * radius
+        };
+
+        // Update the endpoint position
+        this.updateVertex(vertexId, newPosition);
+      }
+    }
+  }
+
   // 更新圆弧半径（保持中心点不变）
   updateArcRadius(arcId: string, scale: number): void {
     const arcIndex = this.shapes.findIndex(shape => shape.id === arcId);
