@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { BaseTool } from './BaseTool';
 import { geometryStore } from '../../stores/GeometryStore';
 import { IToolManager, MouseState, SelectionState, ToolType } from '../../types/ToolTypes';
-import { LineSegment } from '../../types/GeometryTypes';
+import { LineSegment, CircularArc } from '../../types/GeometryTypes';
 
 export class MoveShapeTool extends BaseTool {
   private mouseState: MouseState;
@@ -39,12 +39,26 @@ export class MoveShapeTool extends BaseTool {
           const lineShape = selectedShape as LineSegment;
           const startVertex = geometryStore.getVertexById(lineShape.startVertexId);
           const endVertex = geometryStore.getVertexById(lineShape.endVertexId);
-          
+
           if (startVertex && endVertex) {
             this.selectionState.dragStartVertexPositions = {
               start: { ...startVertex.position },
               end: { ...endVertex.position }
             };
+          }
+        } else if (selectedShape.type === 'circularArc') {
+          // 对于圆弧，记录三个顶点的初始位置
+          const arcShape = selectedShape as CircularArc;
+          const centerVertex = geometryStore.getVertexById(arcShape.centerVertexId);
+          const startVertex = geometryStore.getVertexById(arcShape.startVertexId);
+          const endVertex = geometryStore.getVertexById(arcShape.endVertexId);
+
+          if (centerVertex && startVertex && endVertex) {
+            this.selectionState.dragStartVertexPositions = {
+              start: { ...startVertex.position },
+              end: { ...endVertex.position },
+              center: { ...centerVertex.position }
+            } as any;
           }
         }
       }
@@ -64,7 +78,7 @@ export class MoveShapeTool extends BaseTool {
       const selectedShape = geometryStore.selectedShape;
       if (selectedShape && selectedShape.type === 'lineSegment') {
         const lineShape = selectedShape as LineSegment;
-        
+
         // 使用拖拽开始时记录的顶点位置
         if (this.selectionState.dragStartVertexPositions) {
           geometryStore.updateVertex(lineShape.startVertexId, {
@@ -72,11 +86,36 @@ export class MoveShapeTool extends BaseTool {
             y: this.selectionState.dragStartVertexPositions.start.y + totalDelta.y,
             z: this.selectionState.dragStartVertexPositions.start.z + totalDelta.z,
           });
-          
+
           geometryStore.updateVertex(lineShape.endVertexId, {
             x: this.selectionState.dragStartVertexPositions.end.x + totalDelta.x,
             y: this.selectionState.dragStartVertexPositions.end.y + totalDelta.y,
             z: this.selectionState.dragStartVertexPositions.end.z + totalDelta.z,
+          });
+        }
+      } else if (selectedShape && selectedShape.type === 'circularArc') {
+        const arcShape = selectedShape as CircularArc;
+
+        // 移动圆弧的所有三个顶点
+        if (this.selectionState.dragStartVertexPositions) {
+          const positions = this.selectionState.dragStartVertexPositions as any;
+
+          geometryStore.updateVertex(arcShape.centerVertexId, {
+            x: positions.center.x + totalDelta.x,
+            y: positions.center.y + totalDelta.y,
+            z: positions.center.z + totalDelta.z,
+          });
+
+          geometryStore.updateVertex(arcShape.startVertexId, {
+            x: positions.start.x + totalDelta.x,
+            y: positions.start.y + totalDelta.y,
+            z: positions.start.z + totalDelta.z,
+          });
+
+          geometryStore.updateVertex(arcShape.endVertexId, {
+            x: positions.end.x + totalDelta.x,
+            y: positions.end.y + totalDelta.y,
+            z: positions.end.z + totalDelta.z,
           });
         }
       } else if (selectedShape) {
