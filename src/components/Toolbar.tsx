@@ -243,7 +243,7 @@ export const Toolbar: React.FC = observer(() => {
                   styles={ribbonButtonStyle}
                 />
                 <CommandBarButton
-                  onRenderIcon={() => <CustomIcon name="circle" size={36} />}
+                  onRenderIcon={() => <CustomIcon name="arc" size={36} />}
                   text={languageStore.t.circularArc || "圆弧"}
                   onClick={activateCircularArcTool}
                   styles={ribbonButtonStyle}
