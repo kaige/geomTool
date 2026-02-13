@@ -6,6 +6,7 @@ import { CircularArc } from '../../types/GeometryTypes';
 import { MoveLineEndpointTool } from './MoveLineEndpointTool';
 import { RotateShapeTool } from './RotateShapeTool';
 import { MoveArcEndpointTool } from './MoveArcEndpointTool';
+import { MoveArcTool } from './MoveArcTool';
 
 export class SelectTool extends BaseTool {
   private mouseState: MouseState;
@@ -45,15 +46,24 @@ export class SelectTool extends BaseTool {
       return;
     }
 
-    // 检查是否点击了圆弧端点
+    // 检查是否点击了圆弧端点或中心点
     const arcEndpointInfo = this.checkArcEndpointAtMouse(event, camera, renderer);
     if (arcEndpointInfo) {
-      // 激活圆弧端点移动工具
-      const moveArcEndpointTool = this.toolManager.getTool(ToolType.MOVE_ARC_ENDPOINT) as MoveArcEndpointTool;
-      if (moveArcEndpointTool && moveArcEndpointTool.onMouseDown) {
-        moveArcEndpointTool.setEndpointInfo(arcEndpointInfo.arcId, arcEndpointInfo.endpoint);
-        this.toolManager.activateTool(ToolType.MOVE_ARC_ENDPOINT);
-        moveArcEndpointTool.onMouseDown(event, camera, renderer);
+      if (arcEndpointInfo.point === 'center') {
+        // 激活圆弧中心点移动工具 (改变半径)
+        const moveArcTool = this.toolManager.getTool(ToolType.MOVE_ARC) as MoveArcTool;
+        if (moveArcTool && moveArcTool.onMouseDown) {
+          this.toolManager.activateTool(ToolType.MOVE_ARC);
+          moveArcTool.onMouseDown(event, camera, renderer);
+        }
+      } else {
+        // 激活圆弧端点移动工具
+        const moveArcEndpointTool = this.toolManager.getTool(ToolType.MOVE_ARC_ENDPOINT) as MoveArcEndpointTool;
+        if (moveArcEndpointTool && moveArcEndpointTool.onMouseDown) {
+          moveArcEndpointTool.setEndpointInfo(arcEndpointInfo.arcId, arcEndpointInfo.point);
+          this.toolManager.activateTool(ToolType.MOVE_ARC_ENDPOINT);
+          moveArcEndpointTool.onMouseDown(event, camera, renderer);
+        }
       }
       return;
     }
@@ -555,7 +565,7 @@ export class SelectTool extends BaseTool {
     return null;
   };
 
-  private checkArcEndpointAtMouse = (event: MouseEvent, camera: THREE.OrthographicCamera, renderer: THREE.WebGLRenderer): { arcId: string; endpoint: 'start' | 'end' } | null => {
+  private checkArcEndpointAtMouse = (event: MouseEvent, camera: THREE.OrthographicCamera, renderer: THREE.WebGLRenderer): { arcId: string; point: 'start' | 'end' | 'center' } | null => {
     if (!geometryStore.selectedShapeId) return null;
 
     const selectedShape = geometryStore.selectedShape;
@@ -593,19 +603,22 @@ export class SelectTool extends BaseTool {
       const markerIndex = Math.floor(meshIndex / 2);
 
       if (markerIndex === 0) {
-        // Center point clicked - return null so the shape move tool handles it
-        return null;
+        // Center point clicked - return 'center' to activate MoveArcTool
+        return {
+          arcId: geometryStore.selectedShapeId,
+          point: 'center'
+        };
       } else if (markerIndex === 1) {
         // Start point clicked
         return {
           arcId: geometryStore.selectedShapeId,
-          endpoint: 'start'
+          point: 'start'
         };
       } else {
         // End point clicked (markerIndex === 2)
         return {
           arcId: geometryStore.selectedShapeId,
-          endpoint: 'end'
+          point: 'end'
         };
       }
     }
@@ -643,22 +656,25 @@ export class SelectTool extends BaseTool {
     const distanceToStart = mouseWorldPos.distanceTo(startPos);
     const distanceToEnd = mouseWorldPos.distanceTo(endPos);
 
-    // Check center point first (return null to trigger shape move)
+    // Check center point first (return 'center' to activate MoveArcTool)
     if (distanceToCenter <= distanceThreshold && distanceToCenter < distanceToStart && distanceToCenter < distanceToEnd) {
-      return null;
+      return {
+        arcId: geometryStore.selectedShapeId,
+        point: 'center'
+      };
     }
 
     if (distanceToStart <= distanceThreshold) {
       return {
         arcId: geometryStore.selectedShapeId,
-        endpoint: 'start'
+        point: 'start'
       };
     }
 
     if (distanceToEnd <= distanceThreshold) {
       return {
         arcId: geometryStore.selectedShapeId,
-        endpoint: 'end'
+        point: 'end'
       };
     }
 

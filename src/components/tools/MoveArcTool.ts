@@ -3,17 +3,30 @@ import { BaseTool } from './BaseTool';
 import { geometryStore } from '../../stores/GeometryStore';
 import { MouseState, SelectionState, IToolManager, ToolType } from '../../types/ToolTypes';
 import { CircularArc } from '../../types/GeometryTypes';
+import { SnapManager } from '../../utils/SnapManager';
 
 export class MoveArcTool extends BaseTool {
   private mouseState: MouseState;
   private selectionState: SelectionState;
-  private initialRadius: number = 0;
-  private initialDistance: number = 0;
+  private snapManager: SnapManager;
+  private snapMarker: THREE.Group | null = null;
 
   constructor(mouseState: MouseState, selectionState: SelectionState, toolManager: IToolManager) {
     super('Move Arc', toolManager);
     this.mouseState = mouseState;
     this.selectionState = selectionState;
+    this.snapManager = new SnapManager();
+    this.snapMarker = this.snapManager.createSnapMarker();
+  }
+
+  activate(): void {
+    super.activate();
+    this.snapManager.resetVisualState();
+  }
+
+  deactivate(): void {
+    super.deactivate();
+    this.snapManager.resetVisualState();
   }
 
   onMouseDown = (event: MouseEvent, camera: THREE.OrthographicCamera, renderer: THREE.WebGLRenderer): void => {
@@ -30,49 +43,26 @@ export class MoveArcTool extends BaseTool {
       const arcShape = selectedShape as CircularArc;
       const centerVertex = geometryStore.getVertexById(arcShape.centerVertexId);
       const startVertex = geometryStore.getVertexById(arcShape.startVertexId);
+      const endVertex = geometryStore.getVertexById(arcShape.endVertexId);
 
-      if (centerVertex && startVertex) {
-        // 记录初始半径
-        const centerVec = new THREE.Vector3(
-          centerVertex.position.x,
-          centerVertex.position.y,
-          centerVertex.position.z
-        );
-        const startVec = new THREE.Vector3(
-          startVertex.position.x,
-          startVertex.position.y,
-          startVertex.position.z
-        );
-        this.initialRadius = centerVec.distanceTo(startVec);
+      if (centerVertex && startVertex && endVertex) {
+        // Record the starting positions of all vertices
+        this.selectionState.dragStartVertexPositions = {
+          start: { ...startVertex.position },
+          end: { ...endVertex.position }
+        };
 
-        // 记录鼠标到圆心的初始距离
+        // Record the center position for dragging
+        this.selectionState.dragStartObjectPos = { ...centerVertex.position };
+
+        // Record the initial world position under mouse
         const worldPos = this.screenToWorld(
           event.clientX,
           event.clientY,
           camera,
           renderer
         );
-
-        if (worldPos) {
-          this.initialDistance = worldPos.distanceTo(new THREE.Vector3(
-            centerVertex.position.x,
-            centerVertex.position.y,
-            centerVertex.position.z
-          ));
-        }
-
-        // 记录拖拽开始时的位置
         this.selectionState.dragStartWorldPos = worldPos;
-        this.selectionState.dragStartObjectPos = { ...selectedShape.position };
-
-        // 记录顶点起始位置
-        const endVertex = geometryStore.getVertexById(arcShape.endVertexId);
-        if (endVertex) {
-          this.selectionState.dragStartVertexPositions = {
-            start: { ...startVertex.position },
-            end: { ...endVertex.position }
-          };
-        }
       }
     }
   };
@@ -83,30 +73,55 @@ export class MoveArcTool extends BaseTool {
     const selectedShape = geometryStore.selectedShape;
     if (selectedShape && selectedShape.type === 'circularArc') {
       const arcShape = selectedShape as CircularArc;
-      const centerVertex = geometryStore.getVertexById(arcShape.centerVertexId);
+      const startVertex = geometryStore.getVertexById(arcShape.startVertexId);
+      const endVertex = geometryStore.getVertexById(arcShape.endVertexId);
 
-      if (centerVertex) {
-        const worldPos = this.screenToWorld(
+      if (startVertex && endVertex && this.selectionState.dragStartObjectPos) {
+        // Calculate the midpoint between start and end (this is where the arc's chord midpoint is)
+        const startPoint = new THREE.Vector3(startVertex.position.x, startVertex.position.y, startVertex.position.z);
+        const endPoint = new THREE.Vector3(endVertex.position.x, endVertex.position.y, endVertex.position.z);
+        const chordMidpoint = new THREE.Vector3().addVectors(startPoint, endPoint).multiplyScalar(0.5);
+
+        // Use chord midpoint as reference plane point
+        const currentWorldPos = this.screenToWorld(
           event.clientX,
           event.clientY,
           camera,
-          renderer
+          renderer,
+          chordMidpoint
         );
 
-        if (worldPos) {
-          // 计算当前鼠标到圆心的距离
-          const currentDistance = worldPos.distanceTo(new THREE.Vector3(
-            centerVertex.position.x,
-            centerVertex.position.y,
-            centerVertex.position.z
-          ));
+        let snappedPos = currentWorldPos;
 
-          // 计算缩放比例
-          if (this.initialDistance > 0) {
-            const scale = currentDistance / this.initialDistance;
+        if (currentWorldPos) {
+          // Apply snap to the current world position
+          const snapResult = this.snapManager.findSnapPoint(currentWorldPos, arcShape.id);
+          snappedPos = snapResult.snappedPosition;
+        }
 
-            // 更新圆弧半径（保持中心点不变）
-            geometryStore.updateArcRadius(arcShape.id, scale);
+        // Update the center vertex position
+        // When moving the center while keeping endpoints fixed, we're changing the radius
+        // The new center position is the snapped position
+        if (snappedPos) {
+          geometryStore.updateVertex(arcShape.centerVertexId, {
+            x: snappedPos.x,
+            y: snappedPos.y,
+            z: snappedPos.z
+          });
+        }
+
+        // Update snap marker visibility
+        if (snappedPos && this.snapMarker) {
+          const markerWorldPos = this.screenToWorld(
+            event.clientX,
+            event.clientY,
+            camera,
+            renderer,
+            new THREE.Vector3(snappedPos.x, snappedPos.y, snappedPos.z)
+          );
+          if (markerWorldPos) {
+            this.snapManager.findSnapPoint(markerWorldPos);
+            this.snapManager.updateSnapMarker(this.snapMarker);
           }
         }
       }
@@ -130,11 +145,21 @@ export class MoveArcTool extends BaseTool {
     // 无操作
   }
 
+  updateCursor(renderer: THREE.WebGLRenderer): void {
+    renderer.domElement.style.cursor = 'grab';
+  }
+
+  // Get snap marker for rendering
+  getSnapMarker(): THREE.Group | null {
+    return this.snapMarker;
+  }
+
   private screenToWorld = (
     screenX: number,
     screenY: number,
     camera: THREE.OrthographicCamera,
-    renderer: THREE.WebGLRenderer
+    renderer: THREE.WebGLRenderer,
+    planePoint?: THREE.Vector3
   ): THREE.Vector3 | null => {
     const rect = renderer.domElement.getBoundingClientRect();
     const mouse = new THREE.Vector2();
@@ -144,10 +169,18 @@ export class MoveArcTool extends BaseTool {
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(mouse, camera);
 
-    // 使用Z=0平面
-    const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
-    const intersectPoint = new THREE.Vector3();
+    // Use provided plane point or default to Z=0 plane
+    let plane: THREE.Plane;
+    if (planePoint) {
+      const cameraDirection = new THREE.Vector3();
+      camera.getWorldDirection(cameraDirection);
+      plane = new THREE.Plane();
+      plane.setFromNormalAndCoplanarPoint(cameraDirection, planePoint);
+    } else {
+      plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+    }
 
+    const intersectPoint = new THREE.Vector3();
     if (raycaster.ray.intersectPlane(plane, intersectPoint)) {
       return intersectPoint;
     }
