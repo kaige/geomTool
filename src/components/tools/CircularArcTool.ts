@@ -96,9 +96,13 @@ export class CircularArcTool extends BaseTool {
           snappedPos
         );
 
-        // 创建完成后切换回选择工具
-        this.deactivate();
-        this.toolManager.activateTool(ToolType.SELECT);
+        // 重置圆弧创建状态，准备创建下一个圆弧
+        this.cleanupTempGeometry();
+        this.arcCreationState.step = 'pick_start';
+        this.arcCreationState.startPoint = null;
+        this.arcCreationState.endPoint = null;
+        this.arcCreationState.arcPoint = null;
+        this.snapManager.resetVisualState();
       }
     }
   };

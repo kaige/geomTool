@@ -82,11 +82,41 @@ export const Toolbar: React.FC = observer(() => {
     }
   };
 
-  const ribbonButtonStyle = {
+  const activateSphereTool = () => {
+    if (globalToolManager) {
+      globalToolManager.activateTool(ToolType.CREATE_SPHERE);
+    }
+  };
+
+  const activateCubeTool = () => {
+    if (globalToolManager) {
+      globalToolManager.activateTool(ToolType.CREATE_CUBE);
+    }
+  };
+
+  const activateCylinderTool = () => {
+    if (globalToolManager) {
+      globalToolManager.activateTool(ToolType.CREATE_CYLINDER);
+    }
+  };
+
+  const activateConeTool = () => {
+    if (globalToolManager) {
+      globalToolManager.activateTool(ToolType.CREATE_CONE);
+    }
+  };
+
+  const activateTorusTool = () => {
+    if (globalToolManager) {
+      globalToolManager.activateTool(ToolType.CREATE_TORUS);
+    }
+  };
+
+  const ribbonButtonStyle = (isActive: boolean = false) => ({
     root: {
       height: 60,
       minWidth: 60,
-      border: '1px solid transparent',
+      border: isActive ? '1px solid #c7e0f4' : '1px solid transparent',
       borderRadius: '4px',
       margin: '0px 1px',
       padding: '0px 4px 0px 4px',
@@ -95,6 +125,7 @@ export const Toolbar: React.FC = observer(() => {
       alignItems: 'center',
       justifyContent: 'center',
       color: '#0078d4',
+      backgroundColor: isActive ? '#f3f2f1' : 'transparent',
       '&:hover': {
         border: '1px solid #c7e0f4',
         backgroundColor: '#f3f2f1',
@@ -150,7 +181,7 @@ export const Toolbar: React.FC = observer(() => {
         backgroundColor: 'transparent !important',
       },
     },
-  };
+  });
 
   return (
     <div style={{ 
@@ -209,44 +240,44 @@ export const Toolbar: React.FC = observer(() => {
                 <CommandBarButton
                   onRenderIcon={() => <CustomIcon name="sphere" size={36} />}
                   text={languageStore.t.sphere}
-                  onClick={() => addShape('sphere')}
-                  styles={ribbonButtonStyle}
+                  onClick={activateSphereTool}
+                  styles={ribbonButtonStyle(geometryStore.activeToolType === ToolType.CREATE_SPHERE)}
                 />
                 <CommandBarButton
                   onRenderIcon={() => <CustomIcon name="cube" size={36} />}
                   text={languageStore.t.cube}
-                  onClick={() => addShape('cube')}
-                  styles={ribbonButtonStyle}
+                  onClick={activateCubeTool}
+                  styles={ribbonButtonStyle(geometryStore.activeToolType === ToolType.CREATE_CUBE)}
                 />
                 <CommandBarButton
                   onRenderIcon={() => <CustomIcon name="cylinder" size={36} />}
                   text={languageStore.t.cylinder}
-                  onClick={() => addShape('cylinder')}
-                  styles={ribbonButtonStyle}
+                  onClick={activateCylinderTool}
+                  styles={ribbonButtonStyle(geometryStore.activeToolType === ToolType.CREATE_CYLINDER)}
                 />
                 <CommandBarButton
                   onRenderIcon={() => <CustomIcon name="cone" size={36} />}
                   text={languageStore.t.cone}
-                  onClick={() => addShape('cone')}
-                  styles={ribbonButtonStyle}
+                  onClick={activateConeTool}
+                  styles={ribbonButtonStyle(geometryStore.activeToolType === ToolType.CREATE_CONE)}
                 />
                 <CommandBarButton
                   onRenderIcon={() => <CustomIcon name="torus" size={36} />}
                   text={languageStore.t.torus}
-                  onClick={() => addShape('torus')}
-                  styles={ribbonButtonStyle}
+                  onClick={activateTorusTool}
+                  styles={ribbonButtonStyle(geometryStore.activeToolType === ToolType.CREATE_TORUS)}
                 />
                 <CommandBarButton
                   onRenderIcon={() => <CustomIcon name="line" size={36} />}
                   text={languageStore.t.lineSegment || "线段"}
                   onClick={activateLineSegmentTool}
-                  styles={ribbonButtonStyle}
+                  styles={ribbonButtonStyle(geometryStore.activeToolType === ToolType.CREATE_LINE_SEGMENT)}
                 />
                 <CommandBarButton
                   onRenderIcon={() => <CustomIcon name="arc" size={36} />}
                   text={languageStore.t.circularArc || "圆弧"}
                   onClick={activateCircularArcTool}
-                  styles={ribbonButtonStyle}
+                  styles={ribbonButtonStyle(geometryStore.activeToolType === ToolType.CREATE_CIRCULAR_ARC)}
                 />
               </Stack>
             </Stack>
@@ -263,14 +294,14 @@ export const Toolbar: React.FC = observer(() => {
                   text={languageStore.t.deleteSelected}
                   onClick={deleteSelected}
                   disabled={!geometryStore.selectedShapeId}
-                  styles={ribbonButtonStyle}
+                  styles={ribbonButtonStyle(false)}
                 />
                 <CommandBarButton
                   onRenderIcon={() => <CustomIcon name="clear" size={36} />}
                   text={languageStore.t.clearAll}
                   onClick={clearAll}
                   disabled={geometryStore.shapes.length === 0}
-                  styles={ribbonButtonStyle}
+                  styles={ribbonButtonStyle(false)}
                 />
               </Stack>
             </Stack>

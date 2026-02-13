@@ -7,11 +7,14 @@ import { CircularArcTool } from './CircularArcTool';
 import { MoveArcEndpointTool } from './MoveArcEndpointTool';
 import { MoveArcTool } from './MoveArcTool';
 import { LineSegmentTool } from './LineSegmentTool';
+import { CreateShape3DTool } from './CreateShape3DTool';
 import { MouseState, CameraState, SelectionState, LineEndpointState, ArcEndpointState, ArcCreationState } from '../../types/ToolTypes';
+import { geometryStore } from '../../stores/GeometryStore';
 import * as THREE from 'three';
 
 export class ToolManager implements IToolManager {
   currentTool: ITool | null = null;
+  currentToolType: ToolType = ToolType.SELECT;
   tools: Map<ToolType, ITool> = new Map();
 
   constructor(
@@ -32,6 +35,13 @@ export class ToolManager implements IToolManager {
     this.tools.set(ToolType.MOVE_ARC, new MoveArcTool(mouseState, selectionState, this));
     this.tools.set(ToolType.CREATE_LINE_SEGMENT, new LineSegmentTool(mouseState, this));
 
+    // 初始化3D形状创建工具
+    this.tools.set(ToolType.CREATE_SPHERE, new CreateShape3DTool('sphere', mouseState, this));
+    this.tools.set(ToolType.CREATE_CUBE, new CreateShape3DTool('cube', mouseState, this));
+    this.tools.set(ToolType.CREATE_CYLINDER, new CreateShape3DTool('cylinder', mouseState, this));
+    this.tools.set(ToolType.CREATE_CONE, new CreateShape3DTool('cone', mouseState, this));
+    this.tools.set(ToolType.CREATE_TORUS, new CreateShape3DTool('torus', mouseState, this));
+
     // 初始化SelectTool（需要传入this引用）
     this.tools.set(ToolType.SELECT, new SelectTool(mouseState, cameraState, meshesRef, this));
 
@@ -49,7 +59,10 @@ export class ToolManager implements IToolManager {
     const newTool = this.tools.get(toolType);
     if (newTool) {
       this.currentTool = newTool;
+      this.currentToolType = toolType;
       this.currentTool.activate();
+      // 更新 MobX store 中的工具类型，供 Toolbar 观察
+      geometryStore.setActiveToolType(toolType);
     }
   }                      
 
@@ -67,6 +80,11 @@ export class ToolManager implements IToolManager {
   // 获取当前工具
   getCurrentTool(): ITool | null {
     return this.currentTool;
+  }
+
+  // 获取当前工具类型
+  getCurrentToolType(): ToolType {
+    return this.currentToolType;
   }
 
   // 处理鼠标事件

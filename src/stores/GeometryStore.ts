@@ -11,6 +11,7 @@ import {
   Vertex,
   CircleCurve
 } from '../types/GeometryTypes';
+import { ToolType } from '../types/ToolTypes';
 
 export class GeometryStore {
   vertices: Vertex[] = [];
@@ -18,10 +19,15 @@ export class GeometryStore {
   shapes: GeometryShape[] = [];
   selectedShapeId: string | null = null;
   selectedVertexId: string | null = null;
+  activeToolType: ToolType = ToolType.SELECT;
   private nextId: number = 0; // 自增ID计数器
 
   constructor() {
     makeAutoObservable(this);
+  }
+
+  setActiveToolType(toolType: ToolType): void {
+    this.activeToolType = toolType;
   }
 
   // 顶点管理方法
@@ -126,18 +132,19 @@ export class GeometryStore {
   }
 
   // 3D几何形状方法（保持原有功能）
-  addShape3D(type: GeometryShape3D['type']): void {
-    const randomPos = () => (Math.random() - 0.5) * 4;
-    
+  addShape3D(type: GeometryShape3D['type'], position?: { x: number; y: number; z: number }): void {
     let defaultRotation = { x: 0, y: 0, z: 0 };
     if (type === 'cube') {
       defaultRotation = { x: 1.745, y: 0.055, z: 0.283 };
     }
-    
+
+    // Use provided position or generate random one
+    const pos = position || { x: (Math.random() - 0.5) * 4, y: 1, z: (Math.random() - 0.5) * 4 };
+
     const newShape: GeometryShape3D = {
       id: this.nextId.toString(),
       type,
-      position: { x: randomPos(), y: 1, z: randomPos() },
+      position: pos,
       rotation: defaultRotation,
       scale: { x: 1, y: 1, z: 1 },
       color: '#0078d4',
@@ -593,8 +600,8 @@ export class GeometryStore {
   }
 
   // 保持向后兼容的方法
-  addShape(type: GeometryShape3D['type']): void {
-    this.addShape3D(type);
+  addShape(type: GeometryShape3D['type'], position?: { x: number; y: number; z: number }): void {
+    this.addShape3D(type, position);
   }
 
   clearShapes(): void {

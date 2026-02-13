@@ -130,15 +130,12 @@ export class LineSegmentTool extends BaseTool {
       this.createDefaultLineSegment(snappedPos);
     }
 
-    // Clean up and reset
+    // Clean up and reset for next line segment
     this.cleanupTempGeometry();
     this.startPoint = null;
     this.isDragging = false;
     this.mouseDownPosition = null;
     this.snapManager.resetVisualState();
-
-    // Switch back to select tool
-    this.toolManager.activateTool(ToolType.SELECT);
   };
 
   onKeyDown(event: KeyboardEvent, camera: THREE.OrthographicCamera): void {
