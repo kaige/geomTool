@@ -357,45 +357,71 @@ export class GeometryStore {
     const vertexId = endpoint === 'start' ? arc.startVertexId : arc.endVertexId;
     const otherVertexId = endpoint === 'start' ? arc.endVertexId : arc.startVertexId;
     const otherVertex = this.getVertexById(otherVertexId);
+    const centerVertex = this.getVertexById(arc.centerVertexId);
 
-    if (otherVertex) {
-      // 保持另一个端点不变，只更新被拖拽的端点
+    if (otherVertex && centerVertex) {
+      // Calculate the original radius (distance from center to the other fixed endpoint)
+      const originalRadius = Math.sqrt(
+        Math.pow(otherVertex.position.x - centerVertex.position.x, 2) +
+        Math.pow(otherVertex.position.y - centerVertex.position.y, 2)
+      );
+
+      // Update the dragged endpoint
       this.updateVertex(vertexId, position);
 
-      // 计算新端点和另一个端点之间的中点
-      const midpoint = {
-        x: (position.x + otherVertex.position.x) / 2,
-        y: (position.y + otherVertex.position.y) / 2,
-        z: (position.z + otherVertex.position.z) / 2
-      };
-
-      // 计算弦的向量和长度
+      // Calculate new chord (between new endpoint and fixed endpoint)
       const chordVector = {
         x: otherVertex.position.x - position.x,
         y: otherVertex.position.y - position.y
       };
       const chordLength = Math.sqrt(chordVector.x * chordVector.x + chordVector.y * chordVector.y);
 
-      if (chordLength > 0.001) { // 避免除零错误
-        // 计算弦的垂直方向（单位向量）
+      if (chordLength > 0.001) {
+        // Calculate the midpoint of the new chord
+        const midpoint = {
+          x: (position.x + otherVertex.position.x) / 2,
+          y: (position.y + otherVertex.position.y) / 2,
+          z: (position.z + otherVertex.position.z) / 2
+        };
+
+        // Calculate perpendicular bisector direction
         const perpVector = {
           x: -chordVector.y / chordLength,
           y: chordVector.x / chordLength
         };
 
-        // 使用固定的弧高比例，创建弧点
-        const arcHeight = chordLength * 0.3; // 弧高为弦长的30%
-        const arcPoint = {
-          x: midpoint.x + perpVector.x * arcHeight,
-          y: midpoint.y + perpVector.y * arcHeight,
+        // Calculate the distance from chord midpoint to center along perpendicular bisector
+        // Using the Pythagorean theorem: distance = sqrt(radius^2 - (chord/2)^2)
+        const halfChord = chordLength / 2;
+        let centerDistance = 0;
+
+        if (originalRadius > halfChord) {
+          centerDistance = Math.sqrt(originalRadius * originalRadius - halfChord * halfChord);
+        } else {
+          // If chord is longer than diameter, use a minimum distance
+          centerDistance = halfChord * 0.1;
+        }
+
+        // Determine which side of the chord the center should be on
+        // Create a vector from midpoint to current center
+        const midToCenter = {
+          x: centerVertex.position.x - midpoint.x,
+          y: centerVertex.position.y - midpoint.y
+        };
+
+        // Check the sign of dot product to determine which side
+        const dotProduct = midToCenter.x * perpVector.x + midToCenter.y * perpVector.y;
+        const side = dotProduct >= 0 ? 1 : -1;
+
+        // Calculate new center position
+        const newCenter = {
+          x: midpoint.x + perpVector.x * centerDistance * side,
+          y: midpoint.y + perpVector.y * centerDistance * side,
           z: midpoint.z
         };
 
-        // 使用三点计算新的中心点
-        const newCenterData = this.calculateCircularArc(position, otherVertex.position, arcPoint);
-
-        // 更新中心点位置
-        this.updateVertex(arc.centerVertexId, newCenterData.center);
+        // Update center vertex
+        this.updateVertex(arc.centerVertexId, newCenter);
       }
     }
   }
