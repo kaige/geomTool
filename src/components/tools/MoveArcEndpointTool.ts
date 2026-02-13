@@ -3,15 +3,30 @@ import { BaseTool } from './BaseTool';
 import { geometryStore } from '../../stores/GeometryStore';
 import { MouseState, ArcEndpointState, IToolManager, ToolType } from '../../types/ToolTypes';
 import { CircularArc } from '../../types/GeometryTypes';
+import { SnapManager } from '../../utils/SnapManager';
 
 export class MoveArcEndpointTool extends BaseTool {
   private mouseState: MouseState;
   private arcEndpointState: ArcEndpointState;
+  private snapManager: SnapManager;
+  private snapMarker: THREE.Group | null = null;
 
   constructor(mouseState: MouseState, arcEndpointState: ArcEndpointState, toolManager: IToolManager) {
     super('Move Arc Endpoint', toolManager);
     this.mouseState = mouseState;
     this.arcEndpointState = arcEndpointState;
+    this.snapManager = new SnapManager();
+    this.snapMarker = this.snapManager.createSnapMarker();
+  }
+
+  activate(): void {
+    super.activate();
+    this.snapManager.resetVisualState();
+  }
+
+  deactivate(): void {
+    super.deactivate();
+    this.snapManager.resetVisualState();
   }
 
   onMouseDown = (event: MouseEvent, camera: THREE.OrthographicCamera, renderer: THREE.WebGLRenderer): void => {
@@ -40,7 +55,7 @@ export class MoveArcEndpointTool extends BaseTool {
       if (vertex) {
         this.arcEndpointState.dragStartEndpointPos = { ...vertex.position };
 
-        // 记录所有相关顶点的起始位置
+        // Record all relevant vertex positions for arc recalculation
         const centerVertex = geometryStore.getVertexById(arcShape.centerVertexId);
         const startVertex = geometryStore.getVertexById(arcShape.startVertexId);
         const endVertex = geometryStore.getVertexById(arcShape.endVertexId);
@@ -63,27 +78,48 @@ export class MoveArcEndpointTool extends BaseTool {
         !this.arcEndpointState.draggedEndpoint ||
         !this.arcEndpointState.dragStartEndpointPos) return;
 
+    let snappedPos = undefined;
+
     const selectedShape = geometryStore.selectedShape;
     if (selectedShape && selectedShape.type === 'circularArc') {
       const arcShape = selectedShape as CircularArc;
       const arcCenterVertex = geometryStore.getVertexById(arcShape.centerVertexId);
-      const currentWorldPos = this.screenToWorldForEndpoint(
-        event.clientX,
-        event.clientY,
-        camera,
-        renderer,
-        new THREE.Vector3(arcCenterVertex!.position.x, arcCenterVertex!.position.y, arcCenterVertex!.position.z)
-      );
 
-      if (currentWorldPos) {
-        // 使用新的更新方法，传入固定的端点位置
-        geometryStore.updateArcEndpoint(
-          arcShape.id,
-          this.arcEndpointState.draggedEndpoint!,
-          currentWorldPos
-        );
+      if (arcCenterVertex) {
+        // Use the arc's center position as reference plane point
+        const arcCenterPosition = new THREE.Vector3(arcCenterVertex.position.x, arcCenterVertex.position.y, arcCenterVertex.position.z);
+        const currentWorldPos = this.screenToWorldForEndpoint(event.clientX, event.clientY, camera, renderer, arcCenterPosition);
+
+        if (currentWorldPos) {
+          // Apply snap to the current world position (exclude current arc from snap targets)
+          const snapResult = this.snapManager.findSnapPoint(currentWorldPos, arcShape.id);
+          snappedPos = snapResult.snappedPosition;
+
+          // Use the new update method for arc endpoints
+          geometryStore.updateArcEndpoint(
+            arcShape.id,
+            this.arcEndpointState.draggedEndpoint!,
+            {
+              x: snappedPos.x,
+              y: snappedPos.y,
+              z: snappedPos.z
+            }
+          );
+        }
       }
     }
+
+    // Update snap marker visibility
+    if (snappedPos) {
+      const worldPos = this.screenToWorldForEndpoint(event.clientX, event.clientY, camera, renderer, new THREE.Vector3(snappedPos.x, snappedPos.y, snappedPos.z));
+      if (worldPos) {
+        this.snapManager.findSnapPoint(worldPos);
+        if (this.snapMarker) {
+          this.snapManager.updateSnapMarker(this.snapMarker);
+        }
+      }
+    }
+    
   };
 
   onMouseUp = (event: MouseEvent, camera: THREE.OrthographicCamera, renderer: THREE.WebGLRenderer): void => {
@@ -95,7 +131,7 @@ export class MoveArcEndpointTool extends BaseTool {
     this.arcEndpointState.dragStartVertexPositions = null;
     renderer.domElement.style.cursor = 'grab';
 
-    // 切换回选择工具
+    // Switch back to select tool
     this.deactivate();
     this.toolManager.activateTool(ToolType.SELECT);
   };
@@ -120,7 +156,7 @@ export class MoveArcEndpointTool extends BaseTool {
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(mouse, camera);
 
-    // 使用传入的平面点和相机朝向定义平面
+    // Use the provided plane point and camera direction to define the reference plane
     const cameraDirection = new THREE.Vector3();
     camera.getWorldDirection(cameraDirection);
     const plane = new THREE.Plane();
@@ -133,8 +169,13 @@ export class MoveArcEndpointTool extends BaseTool {
     return null;
   };
 
+  // Get snap marker for rendering
+  getSnapMarker(): THREE.Group | null {
+    return this.snapMarker;
+  }
+
   onKeyDown(event: KeyboardEvent, camera: THREE.OrthographicCamera): void {
-    // 无操作
+    // No operation
   }
 
   updateCursor(renderer: THREE.WebGLRenderer): void {
