@@ -258,6 +258,8 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
         if (currentTool && typeof (currentTool as any).getSnapMarker === 'function') {
           const snapMarker = (currentTool as any).getSnapMarker();
           if (snapMarker && snapMarker instanceof THREE.Group && snapMarker.visible) {
+            // Update the marker's matrix world before rendering
+            snapMarker.updateMatrixWorld(true);
             // Render each child of the snap marker
             snapMarker.children.forEach(child => {
               if (child instanceof THREE.Mesh || child instanceof THREE.Line) {

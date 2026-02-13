@@ -260,6 +260,7 @@ export class SnapManager {
    */
   createSnapMarker(): THREE.Group {
     const group = new THREE.Group();
+    group.visible = false; // Initially hidden
 
     // Create a cross marker for snap indication
     const crossSize = 0.3;
@@ -344,6 +345,8 @@ export class SnapManager {
 
     marker.visible = true;
     marker.position.copy(this.visualState.snapPosition);
+    marker.updateMatrix();
+    marker.updateMatrixWorld(true);
 
     // Update visibility of different marker parts based on snap type
     const centerCircle = marker.getObjectByName('centerCircle') as THREE.Mesh;
