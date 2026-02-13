@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { BaseTool } from './BaseTool';
 import { geometryStore } from '../../stores/GeometryStore';
 import { MouseState, ArcCreationState, IToolManager, ToolType } from '../../types/ToolTypes';
+import { SnapManager } from '../../utils/SnapManager';
 
 export class CircularArcTool extends BaseTool {
   private mouseState: MouseState;
@@ -9,11 +10,15 @@ export class CircularArcTool extends BaseTool {
   private tempLine: THREE.Line | null = null;
   private tempArc: THREE.Line | null = null;
   private tempDottedLine: THREE.Line | null = null;
+  private snapManager: SnapManager;
+  private snapMarker: THREE.Group | null = null;
 
   constructor(mouseState: MouseState, arcCreationState: ArcCreationState, toolManager: IToolManager) {
     super('Circular Arc', toolManager);
     this.mouseState = mouseState;
     this.arcCreationState = arcCreationState;
+    this.snapManager = new SnapManager();
+    this.snapMarker = this.snapManager.createSnapMarker();
   }
 
   activate(): void {
@@ -24,6 +29,7 @@ export class CircularArcTool extends BaseTool {
     this.arcCreationState.endPoint = null;
     this.arcCreationState.arcPoint = null;
     this.arcCreationState.tempArcId = null;
+    this.snapManager.resetVisualState();
   }
 
   deactivate(): void {
@@ -31,6 +37,7 @@ export class CircularArcTool extends BaseTool {
     this.arcCreationState.isCreatingArc = false;
     this.arcCreationState.step = null;
     this.cleanupTempGeometry();
+    this.snapManager.resetVisualState();
   }
 
   onMouseDown = (event: MouseEvent, camera: THREE.OrthographicCamera, renderer: THREE.WebGLRenderer): void => {
@@ -43,22 +50,26 @@ export class CircularArcTool extends BaseTool {
     const worldPos = this.screenToWorld(event.clientX, event.clientY, camera, renderer);
     if (!worldPos) return;
 
+    // Apply snap to the clicked position
+    const snapResult = this.snapManager.findSnapPoint(worldPos);
+    const snappedPos = snapResult.snappedPosition;
+
     if (this.arcCreationState.step === 'pick_start') {
       // 第一步：选择起点
-      this.arcCreationState.startPoint = worldPos;
+      this.arcCreationState.startPoint = snappedPos;
       this.arcCreationState.step = 'pick_end';
-      this.createTempLine(worldPos, camera, renderer);
+      this.createTempLine(snappedPos, camera, renderer);
     } else if (this.arcCreationState.step === 'pick_end') {
       // 第二步：选择终点
-      this.arcCreationState.endPoint = worldPos;
+      this.arcCreationState.endPoint = snappedPos;
       this.arcCreationState.step = 'pick_arc_point';
-      this.updateTempLine(worldPos);
+      this.updateTempLine(snappedPos);
 
       // 创建一个合理的初始临时圆弧，使用起点和终点中点上方的一个点作为弧点
       if (this.arcCreationState.startPoint) {
-        const midX = (this.arcCreationState.startPoint.x + worldPos.x) / 2;
-        const midY = (this.arcCreationState.startPoint.y + worldPos.y) / 2;
-        const distance = Math.sqrt(Math.pow(worldPos.x - this.arcCreationState.startPoint.x, 2) + Math.pow(worldPos.y - this.arcCreationState.startPoint.y, 2));
+        const midX = (this.arcCreationState.startPoint.x + snappedPos.x) / 2;
+        const midY = (this.arcCreationState.startPoint.y + snappedPos.y) / 2;
+        const distance = Math.sqrt(Math.pow(snappedPos.x - this.arcCreationState.startPoint.x, 2) + Math.pow(snappedPos.y - this.arcCreationState.startPoint.y, 2));
         const arcHeight = distance * 0.3; // 使用弦长的30%作为初始弧高
 
         // 计算垂直于弦的方向
@@ -82,7 +93,7 @@ export class CircularArcTool extends BaseTool {
         geometryStore.addCircularArc(
           this.arcCreationState.startPoint,
           this.arcCreationState.endPoint,
-          worldPos
+          snappedPos
         );
 
         // 创建完成后切换回选择工具
@@ -96,18 +107,27 @@ export class CircularArcTool extends BaseTool {
     const worldPos = this.screenToWorld(event.clientX, event.clientY, camera, renderer);
     if (!worldPos) return;
 
+    // Apply snap to the mouse position
+    const snapResult = this.snapManager.findSnapPoint(worldPos);
+    const snappedPos = snapResult.snappedPosition;
+
+    // Update snap marker
+    if (this.snapMarker) {
+      this.snapManager.updateSnapMarker(this.snapMarker);
+    }
+
     if (this.arcCreationState.step === 'pick_end' && this.tempLine) {
       // 更新临时线条到鼠标位置
-      this.updateTempLine(worldPos);
+      this.updateTempLine(snappedPos);
     } else if (this.arcCreationState.step === 'pick_arc_point' && this.arcCreationState.startPoint && this.arcCreationState.endPoint) {
       // 更新临时圆弧到鼠标位置
-      this.updateTempArc(worldPos);
+      this.updateTempArc(snappedPos);
 
       // 创建或更新从终点到鼠标的虚线
       if (!this.tempDottedLine) {
-        this.createTempDottedLine(worldPos);
+        this.createTempDottedLine(snappedPos);
       } else {
-        this.updateTempDottedLine(worldPos);
+        this.updateTempDottedLine(snappedPos);
       }
     }
   };
@@ -425,5 +445,10 @@ export class CircularArcTool extends BaseTool {
     if (this.tempArc) result.arc = this.tempArc;
     if (this.tempDottedLine) result.dottedLine = this.tempDottedLine;
     return result;
+  }
+
+  // Get snap marker for rendering
+  getSnapMarker(): THREE.Group | null {
+    return this.snapMarker;
   }
 }

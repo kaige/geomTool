@@ -253,6 +253,19 @@ export const ThreeCanvas: React.FC<ThreeCanvasProps> = observer(({ width, height
             }
           }
         }
+
+        // Render snap marker
+        if (currentTool && typeof (currentTool as any).getSnapMarker === 'function') {
+          const snapMarker = (currentTool as any).getSnapMarker();
+          if (snapMarker && snapMarker instanceof THREE.Group && snapMarker.visible) {
+            // Render each child of the snap marker
+            snapMarker.children.forEach(child => {
+              if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
+                renderer.render(child, camera);
+              }
+            });
+          }
+        }
       }
 
       renderer.autoClear = true;

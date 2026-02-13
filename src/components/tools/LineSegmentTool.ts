@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { BaseTool } from './BaseTool';
 import { geometryStore } from '../../stores/GeometryStore';
 import { MouseState, IToolManager, ToolType } from '../../types/ToolTypes';
+import { SnapManager } from '../../utils/SnapManager';
 
 export class LineSegmentTool extends BaseTool {
   private mouseState: MouseState;
@@ -10,6 +11,8 @@ export class LineSegmentTool extends BaseTool {
   private mouseDownPosition: { x: number; y: number } | null = null;
   private tempLine: THREE.Line | null = null;
   private isDragging: boolean = false;
+  private snapManager: SnapManager;
+  private snapMarker: THREE.Group | null = null;
   private readonly CLICK_THRESHOLD = 150; // 150ms threshold for click vs drag
   private readonly MOVE_THRESHOLD = 5; // 5px threshold for movement detection
   private readonly DEFAULT_LINE_LENGTH = 2; // Default line length
@@ -17,6 +20,8 @@ export class LineSegmentTool extends BaseTool {
   constructor(mouseState: MouseState, toolManager: IToolManager) {
     super('Line Segment', toolManager);
     this.mouseState = mouseState;
+    this.snapManager = new SnapManager();
+    this.snapMarker = this.snapManager.createSnapMarker();
   }
 
   activate(): void {
@@ -24,6 +29,7 @@ export class LineSegmentTool extends BaseTool {
     this.startPoint = null;
     this.isDragging = false;
     this.cleanupTempGeometry();
+    this.snapManager.resetVisualState();
   }
 
   deactivate(): void {
@@ -31,6 +37,7 @@ export class LineSegmentTool extends BaseTool {
     this.cleanupTempGeometry();
     this.startPoint = null;
     this.isDragging = false;
+    this.snapManager.resetVisualState();
   }
 
   onMouseDown = (event: MouseEvent, camera: THREE.OrthographicCamera, renderer: THREE.WebGLRenderer): void => {
@@ -46,12 +53,24 @@ export class LineSegmentTool extends BaseTool {
     const worldPos = this.screenToWorld(event.clientX, event.clientY, camera, renderer);
     if (!worldPos) return;
 
-    this.startPoint = worldPos;
+    // Apply snap to the start point
+    const snapResult = this.snapManager.findSnapPoint(worldPos);
+    this.startPoint = snapResult.snappedPosition;
     this.isDragging = false;
   };
 
   onMouseMove = (event: MouseEvent, camera: THREE.OrthographicCamera, renderer: THREE.WebGLRenderer): void => {
-    if (!this.mouseState.isMouseDown || !this.startPoint || !this.mouseDownPosition) return;
+    if (!this.mouseState.isMouseDown || !this.startPoint || !this.mouseDownPosition) {
+      // Even when not drawing, update snap preview on hover
+      const worldPos = this.screenToWorld(event.clientX, event.clientY, camera, renderer);
+      if (worldPos) {
+        this.snapManager.findSnapPoint(worldPos);
+        if (this.snapMarker) {
+          this.snapManager.updateSnapMarker(this.snapMarker);
+        }
+      }
+      return;
+    }
 
     // Check if mouse has moved beyond threshold
     const dx = event.clientX - this.mouseDownPosition.x;
@@ -66,11 +85,20 @@ export class LineSegmentTool extends BaseTool {
       const worldPos = this.screenToWorld(event.clientX, event.clientY, camera, renderer);
       if (!worldPos) return;
 
+      // Apply snap to the end point
+      const snapResult = this.snapManager.findSnapPoint(worldPos);
+      const snappedPos = snapResult.snappedPosition;
+
       // Update or create rubber band line
       if (!this.tempLine) {
-        this.createTempLine(worldPos);
+        this.createTempLine(snappedPos);
       } else {
-        this.updateTempLine(worldPos);
+        this.updateTempLine(snappedPos);
+      }
+
+      // Update snap marker
+      if (this.snapMarker) {
+        this.snapManager.updateSnapMarker(this.snapMarker);
       }
     }
   };
@@ -83,19 +111,23 @@ export class LineSegmentTool extends BaseTool {
     const worldPos = this.screenToWorld(event.clientX, event.clientY, camera, renderer);
     if (!worldPos) return;
 
+    // Apply snap to the end point
+    const snapResult = this.snapManager.findSnapPoint(worldPos);
+    const snappedPos = snapResult.snappedPosition;
+
     const mouseUpTime = Date.now();
     const timeDiff = mouseUpTime - this.mouseDownTime;
 
     // Determine if this was a click or drag
     if (!this.isDragging && timeDiff < this.CLICK_THRESHOLD) {
       // Quick click - create default length line segment
-      this.createDefaultLineSegment(worldPos);
+      this.createDefaultLineSegment(snappedPos);
     } else if (this.isDragging) {
       // Drag - create line segment from start to end point
-      this.createLineSegment(this.startPoint, worldPos);
+      this.createLineSegment(this.startPoint, snappedPos);
     } else {
       // Mouse held but not moved - create default length line segment
-      this.createDefaultLineSegment(worldPos);
+      this.createDefaultLineSegment(snappedPos);
     }
 
     // Clean up and reset
@@ -103,6 +135,7 @@ export class LineSegmentTool extends BaseTool {
     this.startPoint = null;
     this.isDragging = false;
     this.mouseDownPosition = null;
+    this.snapManager.resetVisualState();
 
     // Switch back to select tool
     this.toolManager.activateTool(ToolType.SELECT);
@@ -114,6 +147,7 @@ export class LineSegmentTool extends BaseTool {
       this.cleanupTempGeometry();
       this.startPoint = null;
       this.isDragging = false;
+      this.snapManager.resetVisualState();
       this.toolManager.activateTool(ToolType.SELECT);
     }
   }
@@ -200,5 +234,10 @@ export class LineSegmentTool extends BaseTool {
     const result: { line?: THREE.Line } = {};
     if (this.tempLine) result.line = this.tempLine;
     return result;
+  }
+
+  // Get snap marker for rendering
+  getSnapMarker(): THREE.Group | null {
+    return this.snapMarker;
   }
 }
